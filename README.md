@@ -57,6 +57,17 @@ Shows what the TV can launch, user-installed apps first, and caches the result p
 launches the selected app, r re-probes the TV. A cached list is shown straight away, which covers a TV
 that is asleep and cannot answer a probe.
 
+Press i to install an APK that sits on this machine: type or paste the path and press Enter. `~` is
+expanded and a relative path is resolved against the current directory, so pasting from a file manager
+works. Progress and the result share one line, and the result is the device's own verdict rather than
+the exit code: adb can exit 0 while printing `Failure [INSTALL_FAILED_...]`, and the reason is what
+gets shown, with a hint underneath for the common ones (a downgrade needs `install -d`, a signature
+mismatch means the installed app was signed with a different key).
+
+Split APKs and app bundles (`.apkm`, `.xapk`) are not supported: those are zips holding a base APK and
+its split configs, and installing them means unpacking first and calling `install-multiple`. Node has
+no zip reader built in, so that would be a small module of its own.
+
 ## Device history
 
 Devices are remembered with their address, MAC and label, so they can be reconnected or woken without

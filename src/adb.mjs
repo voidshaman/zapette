@@ -11,7 +11,7 @@
 //   3. platform-tools fetched into ./assets/platform-tools/<platform>-<arch>/
 //   4. the single-file payload that ships in ./assets — macOS only, it is Mach-O
 //   5. whatever `adb` (or `adb.exe`) is on PATH
-import { execFile } from "node:child_process"
+import { execFile, spawn } from "node:child_process"
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import * as net from "node:net"
 import { networkInterfaces } from "node:os"
@@ -320,6 +320,79 @@ function deviceShellQuote(s) {
 export async function inputText(serial, text) {
   if (!text) return { ok: true, out: "", err: "" }
   return adb(["-s", serial, "shell", "input", "text", deviceShellQuote(encodeInputText(text))])
+}
+
+/** Every installed package id, or just the user-installed ones with `thirdParty`. */
+export async function listPackages(serial, { thirdParty = false } = {}) {
+  const r = await adb(["-s", serial, "shell", "pm", "list", "packages", ...(thirdParty ? ["-3"] : [])])
+  return new Set(
+    (r.out || "")
+      .split("\n")
+      .map((line) => line.replace(/^package:/, "").trim())
+      .filter(Boolean),
+  )
+}
+
+/** The APK path(s) of one installed package, as the device reports them. */
+export async function packagePath(serial, pkg) {
+  const r = await adb(["-s", serial, "shell", "pm", "path", pkg])
+  return (r.out || "")
+    .split("\n")
+    .map((line) => line.replace(/^package:/, "").trim())
+    .filter(Boolean)
+}
+
+/**
+ * Install an APK from this machine. `adb install` streams its own progress while
+ * it pushes the file, so a 60 MB APK over Wi-Fi shows something instead of
+ * looking hung; `onProgress` gets each percentage it reports.
+ *
+ * The verdict is the device's, not the exit code's: adb can exit 0 and still
+ * print `Failure [INSTALL_FAILED_...]`, so both are checked and the reason is
+ * handed back for the caller to show.
+ */
+export async function installApk(serial, file, { onProgress, flags = ["-r"] } = {}) {
+  const bin = await adbBinary()
+  const argv = ["-s", serial, "install", ...flags, file]
+  const started = Date.now()
+
+  return new Promise((resolve) => {
+    const child = spawn(bin, argv, { stdio: ["ignore", "pipe", "pipe"] })
+    let out = ""
+    let err = ""
+    let tail = ""
+
+    const feed = (chunk, sink) => {
+      const text = chunk.toString("utf8")
+      if (sink === "err") err += text
+      else out += text
+      if (!onProgress) return
+      // progress lines are separated by \r, and a chunk can split one in half
+      const parts = `${tail}${text}`.split(/[\r\n]/)
+      tail = parts.pop() ?? ""
+      for (const part of parts) {
+        const percent = /\[\s*(\d+)%\]/.exec(part)
+        if (percent) onProgress(Number(percent[1]), part.trim())
+      }
+    }
+
+    child.stdout.on("data", (chunk) => feed(chunk, "out"))
+    child.stderr.on("data", (chunk) => feed(chunk, "err"))
+    child.on("error", (error) =>
+      resolve({ ok: false, reason: null, out, err: `${err} ${error.message}`.trim(), ms: Date.now() - started }),
+    )
+    child.on("close", (code) => {
+      const text = `${out}\n${err}`
+      const failure = /Failure\s*\[([^\]]+)\]/.exec(text)
+      resolve({
+        ok: code === 0 && !failure && /Success/i.test(text),
+        reason: failure ? failure[1] : null,
+        out: out.trim(),
+        err: err.trim(),
+        ms: Date.now() - started,
+      })
+    })
+  })
 }
 
 /** Read the current STREAM_MUSIC volume (0-100 scale on Android TV). */

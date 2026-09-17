@@ -22,6 +22,8 @@ import {
   KEY,
   adbNote,
   connectDevice,
+  installApk,
+  listPackages,
   inputText,
   keyevent,
   listDevices,
@@ -30,7 +32,10 @@ import {
   restartServer,
   scanLan,
 } from "./adb.mjs"
-import { DEMO_APPS, launchApp, listApps, loadApps, saveApps } from "./apps.mjs"
+import { existsSync } from "node:fs"
+import { homedir } from "node:os"
+import { basename, join, resolve } from "node:path"
+import { DEMO_APPS, labelFor, launchApp, listApps, loadApps, saveApps } from "./apps.mjs"
 import { forget, ipOf, loadHistory, remember } from "./devices.mjs"
 import { powerOff, powerOn, wakefulness as readWakefulness } from "./power.mjs"
 import { probeWol, resolveMac } from "./wol.mjs"
@@ -82,6 +87,7 @@ const state = {
   appsSel: 0,
   appsAt: null, // ISO timestamp of the last successful probe
   appsProbing: false,
+  apkOpen: false, // the "install an APK from this machine" prompt is showing
 }
 
 // ---------------------------------------------------------------- renderer
@@ -162,6 +168,18 @@ const appsPanel = new BoxRenderable(renderer, {
 })
 const appsRows = Array.from({ length: ROWS }, () => new TextRenderable(renderer, { content: "", fg: C.text }))
 appsRows.forEach((r) => appsPanel.add(r))
+
+const apkLabel = new TextRenderable(renderer, { content: "APK on this machine (path) then ⏎ :", fg: C.accent })
+const apkInput = new InputRenderable(renderer, {
+  width: 60,
+  placeholder: "~/Downloads/some-app.apk",
+  backgroundColor: "#1a1b26",
+  focusedBackgroundColor: "#24283b",
+  textColor: C.text,
+  cursorColor: C.ok,
+})
+appsPanel.add(apkLabel)
+appsPanel.add(apkInput)
 
 const appsCol = new BoxRenderable(renderer, { flexDirection: "column", flexGrow: 1, backgroundColor: BG })
 appsCol.add(appsTitle)
@@ -542,6 +560,10 @@ function update() {
   addrInput.visible = state.addrOpen
   if (state.addrOpen && state.screen === "devices") addrInput.focus()
 
+  apkLabel.visible = state.apkOpen
+  apkInput.visible = state.apkOpen
+  if (state.apkOpen && state.screen === "apps") apkInput.focus()
+
   // ---- module focus chrome: the focused container lights up
   volumeBox.borderColor = hasFocus("volume") ? C.accent : C.faint
   dpadBox.borderColor = hasFocus("dpad") ? C.accent : C.faint
@@ -586,7 +608,9 @@ function update() {
 
   // ---- footer: context-sensitive for the focused module
   if (state.screen === "apps") {
-    footerHints.content = "↑ ↓ select    ⏎ launch    r re-probe    l / Esc back    d devices"
+    footerHints.content = state.apkOpen
+      ? "Type the path to an APK then ⏎        Esc = cancel"
+      : "↑ ↓ select    ⏎ launch    i install an APK    r re-probe    l / Esc back    d devices"
     footerStatus.content = `${state.apps.length} app(s)   ·   probed ${timeAgo(state.appsAt)}${state.log[0] ? `        ${state.log[0]}` : ""}`
     return
   }
@@ -845,38 +869,41 @@ function selectedTarget() {
 }
 
 // ---------------------------------------------------------------- apps
+/** The probe itself, awaitable, so a caller can log its own line after it. */
+async function runProbe({ quiet = false } = {}) {
+  state.appsProbing = true
+  update()
+  if (state.demo) {
+    state.apps = DEMO_APPS
+    state.appsAt = new Date().toISOString()
+    state.appsProbing = false
+    pushLog(`✓ ${DEMO_APPS.length} app(s) — demo`)
+    update()
+    return
+  }
+  const { apps, error } = await listApps(state.serial)
+  state.appsProbing = false
+  if (error) {
+    pushLog(`✗ app probe — ${firstLine(error)}`)
+    update()
+    return
+  }
+  state.apps = apps
+  state.appsAt = new Date().toISOString()
+  state.appsSel = Math.min(state.appsSel, Math.max(0, apps.length - 1))
+  saveApps(state.serial, apps)
+  if (!quiet) pushLog(`✓ ${apps.length} app(s) on the TV`)
+  update()
+}
+
 /** Probe the TV for launchable apps and cache them per serial. */
-function probeApps() {
+function probeApps(options) {
   if (!state.serial) {
     pushLog("✗ no device — connect one first")
     update()
     return
   }
-  enqueue(async () => {
-    state.appsProbing = true
-    update()
-    if (state.demo) {
-      state.apps = DEMO_APPS
-      state.appsAt = new Date().toISOString()
-      state.appsProbing = false
-      pushLog(`✓ ${DEMO_APPS.length} app(s) — demo`)
-      update()
-      return
-    }
-    const { apps, error } = await listApps(state.serial)
-    state.appsProbing = false
-    if (error) {
-      pushLog(`✗ app probe — ${firstLine(error)}`)
-      update()
-      return
-    }
-    state.apps = apps
-    state.appsAt = new Date().toISOString()
-    state.appsSel = Math.min(state.appsSel, Math.max(0, apps.length - 1))
-    saveApps(state.serial, apps)
-    pushLog(`✓ ${apps.length} app(s) on the TV`)
-    update()
-  })
+  enqueue(() => runProbe(options))
 }
 
 /** `l`: the app list — cached list first, then a fresh probe. */
@@ -894,6 +921,69 @@ function openApps() {
   }
   setScreen("apps")
   probeApps()
+}
+
+/**
+ * `i` on the app list: install an APK that sits on this machine. The progress
+ * line lives at the top of the log and is replaced by the verdict, so a slow
+ * push over Wi-Fi never looks like a hang. Success is not taken from the exit
+ * code alone: the package list is read before and after and the difference is
+ * what gets reported.
+ */
+function installFromPath(input) {
+  const expanded = input.startsWith("~") ? join(homedir(), input.slice(1)) : input
+  const file = resolve(expanded)
+  if (!existsSync(file)) {
+    pushLog(`✗ no such file — ${file}`)
+    update()
+    return
+  }
+  const name = basename(file)
+  enqueue(async () => {
+    state.busy = true
+    pushLog(`… installing ${name}`)
+    update()
+    const before = await listPackages(state.serial).catch(() => new Set())
+    const started = Date.now()
+    const res = await installApk(state.serial, file, {
+      onProgress: (percent) => {
+        state.log[0] = `… installing ${name}  ${percent}%`
+        update()
+      },
+    })
+    state.busy = false
+    const seconds = ((Date.now() - started) / 1000).toFixed(1)
+
+    if (!res.ok) {
+      // adb puts the message inside the reason, e.g.
+      // "INSTALL_PARSE_FAILED_NOT_APK: Failed to parse ...": keep the code on the
+      // verdict line and the rest underneath.
+      const code = res.reason ? res.reason.split(":")[0].trim() : null
+      const extra = res.reason && res.reason !== code ? res.reason.slice(code.length + 1).trim() : null
+      // Newest line first, so the verdict ends up at log[0], where it is read.
+      if (code === "INSTALL_FAILED_VERSION_DOWNGRADE") {
+        pushLog("ℹ that APK is older than the one installed — allow it with install -d")
+      }
+      if (code === "INSTALL_FAILED_UPDATE_INCOMPATIBLE") {
+        pushLog("ℹ signature mismatch, the installed app is signed with another key")
+      }
+      const detail = firstLine(extra || res.err || res.out)
+      if (detail) pushLog(`  ${detail}`)
+      pushLog(`✗ install failed — ${code ?? "no verdict from the TV"}`)
+      update()
+      return
+    }
+
+    const after = await listPackages(state.serial).catch(() => new Set())
+    const added = [...after].filter((pkg) => !before.has(pkg))
+    const what = added.length === 1 ? ` — new: ${labelFor(added[0])}` : added.length > 1 ? ` — ${added.length} new packages` : ""
+    // Refresh first, then state the verdict: only log[0] is on screen here, and
+    // the probe's own line would otherwise sit on top of the result.
+    await runProbe({ quiet: true })
+    state.log[0] = `✓ installed ${name} in ${seconds}s${what}`
+    state.lastSent = `install ${name}`
+    update()
+  })
 }
 
 function launchSelected() {
@@ -1110,6 +1200,33 @@ function handleDevicesKey(key, name, shift) {
 
 function handleAppsKey(key, name, shift) {
   const letter = keyLetter(name)
+
+  if (state.apkOpen) {
+    if (name === "escape") {
+      state.apkOpen = false
+      apkInput.value = ""
+      update()
+      key.stopPropagation()
+      return
+    }
+    if (name === "return") {
+      const path = apkInput.value.trim()
+      state.apkOpen = false
+      apkInput.value = ""
+      update()
+      if (path) installFromPath(path)
+      key.stopPropagation()
+      return
+    }
+    return // the path input owns the keyboard
+  }
+
+  if (letter === "i") {
+    state.apkOpen = true
+    update()
+    key.stopPropagation()
+    return
+  }
   if (name === "up" || name === "down") {
     if (state.apps.length) {
       state.appsSel = Math.min(state.apps.length - 1, Math.max(0, state.appsSel + (name === "down" ? 1 : -1)))
