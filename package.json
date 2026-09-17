@@ -1,0 +1,18 @@
+{
+  "name": "tv-remote-tui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tiny OpenTUI remote that pilots an Android TV over wireless ADB",
+  "type": "module",
+  "bin": {
+    "tv-remote-tui": "./run.sh"
+  },
+  "scripts": {
+    "start": "./run.sh",
+    "build:exe": "bun build --compile --minify --define process.env.EMBED_ADB='\"1\"' ./src/app.mjs --outfile ./dist/tv-remote-tui",
+    "build:exe:slim": "bun build --compile --minify --define process.env.EMBED_ADB='\"0\"' ./src/app.mjs --outfile ./dist/tv-remote-tui-slim"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.5.11"
+  }
+}

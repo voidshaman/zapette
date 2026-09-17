@@ -1,0 +1,13 @@
+# dependencies
+node_modules/
+
+# build output (the compiled binaries are ~80-100 MB)
+dist/
+
+# the OpenTUI docs installed locally for reference
+.agents/
+
+# local artefacts
+.DS_Store
+screenshot.png
+*.log
