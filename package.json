@@ -8,9 +8,12 @@
     "tv-remote-tui": "./run.sh"
   },
   "scripts": {
-    "start": "./run.sh",
-    "build:exe": "bun build --compile --minify --define process.env.EMBED_ADB='\"1\"' ./src/app.mjs --outfile ./dist/tv-remote-tui",
-    "build:exe:slim": "bun build --compile --minify --define process.env.EMBED_ADB='\"0\"' ./src/app.mjs --outfile ./dist/tv-remote-tui-slim"
+    "start": "node run.mjs",
+    "test": "node --test test/",
+    "fetch:adb": "node scripts/fetch-adb.mjs",
+    "build:exe": "node scripts/build.mjs",
+    "build:exe:slim": "node scripts/build.mjs --slim",
+    "build:all": "node scripts/build.mjs --all"
   },
   "dependencies": {
     "@opentui/core": "^0.5.11"

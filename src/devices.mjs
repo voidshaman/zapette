@@ -1,13 +1,12 @@
 // Persisted device history: the TVs this machine has connected to, their IP and
 // MAC, so they can be reconnected or woken without retyping anything.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { homedir } from "node:os"
 import { dirname, join } from "node:path"
+import { stateDir } from "./platform.mjs"
 
 export function historyPath() {
   if (process.env.TV_REMOTE_STATE) return process.env.TV_REMOTE_STATE
-  const base = process.env.XDG_CONFIG_HOME || join(homedir(), ".config")
-  return join(base, "tv-remote-tui", "devices.json")
+  return join(stateDir(), "devices.json")
 }
 
 export function loadHistory() {

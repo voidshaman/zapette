@@ -1,33 +1,17 @@
 #!/bin/sh
-# OpenTUI's native core needs Node.js >= 26.4 with FFI enabled, so don't just
-# trust whatever `node` is first on PATH (nvm may hand us an older one).
-set -e
-
+# POSIX launcher. The logic lives in run.mjs so every platform behaves the same,
+# including the search for a Node 26.4+ (OpenTUI's native core needs FFI).
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-usable() {
-  [ -n "$1" ] || return 1
-  [ -x "$1" ] || return 1
-  v=$("$1" -p 'process.versions.node' 2>/dev/null) || return 1
-  major=${v%%.*}
-  minor=$(printf '%s' "${v#*.}" | cut -d. -f1)
-  [ "$major" -gt 26 ] 2>/dev/null && return 0
-  [ "$major" -eq 26 ] 2>/dev/null && [ "$minor" -ge 4 ] 2>/dev/null && return 0
-  return 1
-}
+if [ -n "$NODE_BIN" ] && [ -x "$NODE_BIN" ]; then
+  exec "$NODE_BIN" "$here/run.mjs" "$@"
+fi
+if command -v node >/dev/null 2>&1; then
+  exec node "$here/run.mjs" "$@"
+fi
+if [ -x "$HOME/.hermes/node/bin/node" ]; then
+  exec "$HOME/.hermes/node/bin/node" "$here/run.mjs" "$@"
+fi
 
-# NODE_BIN wins; then PATH; then a couple of common per-user installs.
-candidates="$NODE_BIN $(command -v node 2>/dev/null) $HOME/.hermes/node/bin/node"
-for dir in "$HOME"/.nvm/versions/node/*/bin; do
-  [ -d "$dir" ] && candidates="$candidates $dir/node"
-done
-
-for candidate in $candidates; do
-  if usable "$candidate"; then
-    exec "$candidate" --disable-warning=ExperimentalWarning --experimental-ffi "$here/src/app.mjs" "$@"
-  fi
-done
-
-echo "tv-remote-tui: need Node.js >= 26.4 (FFI). Found: $(node --version 2>/dev/null || echo 'no node')." >&2
-echo "Set NODE_BIN=/path/to/node to override." >&2
+echo "tv-remote-tui: needs Node 26.4 or newer, or NODE_BIN pointing at one" >&2
 exit 1

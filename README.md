@@ -5,15 +5,19 @@ run it: D-pad, volume, text entry, power, and the apps installed on the TV.
 
 ## Requirements
 
-- Node 26.4 or newer. `run.sh` finds a suitable one; override with `NODE_BIN=/path/to/node`.
+- Node 26.4 or newer. The launcher looks for one; `NODE_BIN` overrides.
 - A TV with wireless debugging enabled (Developer options, ADB over network).
-- adb, bundled with the project: `assets/adb` for a source run, or inside the compiled binary.
+- adb. macOS source runs use the copy in the repo, `npm run fetch:adb` installs it for any other
+  platform, and failing both the app falls back to the adb on PATH. A compiled binary carries its own.
 
 ## Run
 
     ./run.sh          # choose a device, then the remote
     ./run.sh --auto   # open the first connected device
     ./run.sh --demo   # no TV: drives the UI offline
+
+`run.cmd` is the same launcher on Windows. Both are thin wrappers around `node run.mjs`, which finds a
+Node 26.4 or newer and starts the app with it.
 
 ## Keys
 
@@ -61,18 +65,48 @@ one. State lives in `~/.config/tv-remote-tui/`.
 
 ## Build a standalone binary
 
-    npm run build:exe          # embeds the runtime, the TUI library and adb
-    npm run build:exe:slim     # same, but uses the adb on PATH
+    npm run build:exe                            # this machine, adb embedded
+    npm run build:exe:slim                       # same, but uses the adb on PATH
+    node scripts/build.mjs --target linux-x64    # cross-build, installs that target's libraries
+    node scripts/build.mjs --all                 # every supported target
 
 The result needs no Node, no Bun and no adb on the target. Builds are per platform and architecture.
 
+## Platforms
+
+macOS (Intel and Apple Silicon), Linux and Windows, on x64 and arm64. Only three things in the app are
+written per platform: where the cache and settings live, how the system's neighbour cache is read to
+find the TV's MAC, and the name of the adb executable. The interface library ships prebuilt binaries
+for all of these systems.
+
+    npm run fetch:adb -- --target win32-x64      # platform-tools for a platform you build for
+
+`npm run fetch:adb` on its own fetches for the machine you are on. Google publishes no arm64
+platform-tools for Linux or Windows, so those two use the adb on PATH. `npm test` covers the
+platform-specific code, including the neighbour-cache output of all three systems and the archive a
+compiled binary unpacks its adb from.
+
+A compiled binary unpacks its adb the first time it needs it, into
+`<cache>/tv-remote-tui/platform-tools/<platform>-<arch>/`. On Windows that includes the two DLLs adb
+will not start without. Cross-building installs the target's interface library first, which npm only
+accepts with `--force` because the package declares another system. Linux needs both its glibc and
+its musl build present. A build for a platform you are not on is produced but not exercised by the
+build itself: the Linux x64 binary here was run in a Debian container, and it connected to the TV
+using its own embedded adb.
+
 ## Layout
 
-    src/app.mjs      the interface: screens, keys, rendering
-    src/adb.mjs      adb wrapper, keycodes, text encoding, network scan
-    src/power.mjs    power on and off
-    src/apps.mjs     app probe, labels, launching
-    src/wol.mjs      wake-on-LAN packets
-    src/devices.mjs  device history
-    tools/           screen capture and screenshot-review helpers
-    run.sh           launcher
+    src/app.mjs       the interface: screens, keys, rendering
+    src/adb.mjs       adb wrapper, keycodes, text encoding, network scan
+    src/power.mjs     power on and off
+    src/apps.mjs      app probe, labels, launching
+    src/wol.mjs       wake-on-LAN packets
+    src/devices.mjs   device history
+    src/platform.mjs  the three per-platform differences
+    src/arp.mjs       neighbour-cache lookup, per platform
+    src/archive.mjs   tar reader/writer for the embedded adb
+    scripts/          fetch-adb and build
+    test/             platform tests, run with npm test
+    tools/            screen capture and screenshot-review helpers
+    run.mjs           portable launcher
+    run.sh, run.cmd   launchers for POSIX and Windows

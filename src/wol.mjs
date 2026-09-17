@@ -7,38 +7,9 @@
 // "networked standby" option) cannot be flipped over adb — but the MAC address
 // can be discovered, and the magic packet itself is sent from this machine.
 import * as dgram from "node:dgram"
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
 import { adb, shell } from "./adb.mjs"
-
-const execFileP = promisify(execFile)
-
-// macOS prints a short first octet ("aa:bb:cc:dd:ee:ff"), so allow 1-2 hex digits
-// per octet and normalise to the canonical two-digit form.
-const MAC_RE = /(?:[0-9a-f]{1,2}:){5}[0-9a-f]{1,2}/i
-
-export function normalizeMac(text) {
-  return String(text)
-    .split(":")
-    .map((octet) => octet.padStart(2, "0").toLowerCase())
-    .join(":")
-}
-
-export function parseMac(text) {
-  const m = MAC_RE.exec(String(text ?? ""))
-  return m ? normalizeMac(m[0]) : null
-}
-
-/** The device's MAC as seen by this machine's ARP cache — no root needed. */
-export async function arpMac(ip) {
-  if (!ip) return null
-  try {
-    const { stdout } = await execFileP("arp", ["-n", ip], { timeout: 5000, encoding: "utf8" })
-    return parseMac(stdout)
-  } catch {
-    return null
-  }
-}
+// MAC parsing and the per-platform neighbour-cache lookup live in arp.mjs.
+import { arpMac, parseMac } from "./arp.mjs"
 
 /** Ask the device itself, in case it is more permissive than this one was. */
 export async function deviceMac(serial) {

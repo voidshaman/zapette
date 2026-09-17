@@ -20,6 +20,7 @@ import {
 } from "@opentui/core"
 import {
   KEY,
+  adbNote,
   connectDevice,
   inputText,
   keyevent,
@@ -1303,6 +1304,10 @@ const autoOpen = process.argv.includes("--auto") || process.env.TV_REMOTE_AUTO =
 const demo = process.argv.includes("--demo") || process.env.TV_REMOTE_DEMO === "1"
 
 async function boot() {
+  // Say it out loud when adb had to be swapped or is missing: on a platform with
+  // no staged toolchain this is the difference between "nothing works" and a fix.
+  const note = adbNote()
+  if (note && !demo) pushLog(`ℹ ${note}`)
   if (demo) {
     state.demo = true
     openRemote({ serial: "demo", model: "Demo TV", device: "demo", state: "device" })

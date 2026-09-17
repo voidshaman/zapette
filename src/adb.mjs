@@ -1,41 +1,51 @@
 // Thin wrapper around the adb CLI. Every call is an argv array (no local shell),
 // so nothing here can be mangled by the local shell.
 //
-// adb itself is resolved in this order:
+// adb is resolved in this order, and every candidate is *run* before it is
+// trusted — a macOS binary on Linux would otherwise fail later with something
+// unhelpful like "spawn ENOEXEC":
 //   1. $ADB_BIN, if set
-//   2. the copy embedded in a compiled executable — extracted to a cache dir first,
-//      because a Bun embedded asset lives on a virtual $bunfs path that cannot be exec'd
-//   3. the copy shipped in ./assets (source runs)
-//   4. whatever `adb` is on PATH
+//   2. the platform-tools archive embedded in a compiled executable, unpacked to
+//      a cache dir first (a Bun embedded asset lives on a virtual $bunfs path
+//      that cannot be exec'd, and Windows needs its two DLLs next to adb.exe)
+//   3. platform-tools fetched into ./assets/platform-tools/<platform>-<arch>/
+//   4. the single-file payload that ships in ./assets — macOS only, it is Mach-O
+//   5. whatever `adb` (or `adb.exe`) is on PATH
 import { execFile } from "node:child_process"
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import * as net from "node:net"
-import { homedir, networkInterfaces } from "node:os"
+import { networkInterfaces } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
+import { extractTarGz } from "./archive.mjs"
+import { adbFiles, adbName, cacheDir, platformKey } from "./platform.mjs"
 
 const execFileP = promisify(execFile)
 
 let resolvedAdb = null
+let adbWarning = null
 
-function cacheDir() {
-  const base =
-    process.platform === "darwin"
-      ? join(homedir(), "Library", "Caches")
-      : process.env.XDG_CACHE_HOME || join(homedir(), ".cache")
-  return join(base, "tv-remote-tui")
+/** Where an unpacked toolchain lives: <cache>/tv-remote-tui/platform-tools/<key>. */
+export function toolsDir(key = platformKey()) {
+  return join(cacheDir(), "tv-remote-tui", "platform-tools", key)
+}
+
+/** The message to show if the resolved adb had to be swapped or is missing. */
+export function adbNote() {
+  return adbWarning
 }
 
 /** Write bundled bytes somewhere exec'able, reusing an identical existing copy. */
 function materialize(bytes, tag) {
-  const target = join(cacheDir(), `adb-${tag}`)
+  const dir = join(cacheDir(), "tv-remote-tui")
+  const target = join(dir, `adb-${tag}`)
   try {
     if (existsSync(target) && statSync(target).size === bytes.length) {
       chmodSync(target, 0o755)
       return target
     }
-    mkdirSync(cacheDir(), { recursive: true })
+    mkdirSync(dir, { recursive: true })
     writeFileSync(target, bytes, { mode: 0o755 })
     chmodSync(target, 0o755)
     return target
@@ -44,42 +54,96 @@ function materialize(bytes, tag) {
   }
 }
 
-export async function adbBinary() {
-  if (resolvedAdb) return resolvedAdb
-
-  if (process.env.ADB_BIN) {
-    resolvedAdb = process.env.ADB_BIN
-    return resolvedAdb
+/** Unpack an embedded platform-tools.tar.gz, once, and return its adb. */
+function unpackEmbedded(bytes, key) {
+  const platform = key.slice(0, key.lastIndexOf("-"))
+  const dir = toolsDir(key)
+  const bin = join(dir, adbName(platform))
+  try {
+    if (!existsSync(bin)) {
+      mkdirSync(dir, { recursive: true })
+      extractTarGz(bytes, dir)
+    }
+    for (const file of adbFiles(platform)) {
+      const path = join(dir, file)
+      if (existsSync(path)) chmodSync(path, 0o755)
+    }
+    return existsSync(bin) ? bin : null
+  } catch {
+    return null
   }
+}
 
-  // 1) asset embedded at compile time (Bun only — Node has no "file" import type).
-  //    A "slim" build defines EMBED_ADB=0 and falls through to a system adb instead.
+async function resolveAdb() {
+  if (process.env.ADB_BIN) return process.env.ADB_BIN
+
+  // 1) embedded at compile time (Bun only — Node has no "file" import type).
+  //    A "slim" build defines EMBED_ADB=0 and falls through to a system adb.
   if (typeof globalThis.Bun !== "undefined" && process.env.EMBED_ADB !== "0") {
+    try {
+      const asset = await import("../assets/platform-tools.tar.gz", { with: { type: "file" } })
+      const unpacked = unpackEmbedded(readFileSync(asset.default), platformKey())
+      if (unpacked) return unpacked
+    } catch {
+      // no archive embedded — try the older single-file payload
+    }
     try {
       const asset = await import("../assets/adb", { with: { type: "file" } })
       const path = materialize(readFileSync(asset.default), "bundled")
-      if (path) {
-        resolvedAdb = path
-        return resolvedAdb
-      }
+      if (path) return path
     } catch {
-      // fall through to the source copy
+      // fall through
     }
   }
 
-  // 2) the copy that ships with the source tree
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..")
+
+  // 2) platform-tools fetched for this platform, e.g. by `npm run fetch:adb`
+  for (const key of [platformKey(), process.platform]) {
+    const bin = join(root, "assets", "platform-tools", key, adbName())
+    if (existsSync(bin)) return bin
+  }
+
+  // 3) the single-file payload in the repo: Mach-O, so only usable on macOS
+  if (process.platform === "darwin") {
+    const local = join(root, "assets", "adb")
+    if (existsSync(local)) return local
+  }
+
+  // 4) an adb the user installed
+  return adbName()
+}
+
+/** Does this binary actually execute on this machine? */
+async function runs(bin) {
   try {
-    const local = join(dirname(fileURLToPath(import.meta.url)), "..", "assets", "adb")
-    if (existsSync(local)) {
-      resolvedAdb = local
-      return resolvedAdb
-    }
+    await execFileP(bin, ["version"], { timeout: 15000, encoding: "utf8" })
+    return true
   } catch {
-    // fall through to PATH
+    return false
+  }
+}
+
+export async function adbBinary() {
+  if (resolvedAdb) return resolvedAdb
+
+  const candidate = await resolveAdb()
+  if (await runs(candidate)) {
+    resolvedAdb = candidate
+    return resolvedAdb
   }
 
-  // 3) an adb the user installed
-  resolvedAdb = "adb"
+  const system = adbName()
+  if (candidate !== system && (await runs(system))) {
+    adbWarning = `${candidate} does not run on this machine — using the adb on PATH`
+    resolvedAdb = system
+    return resolvedAdb
+  }
+  adbWarning =
+    candidate === system
+      ? `no usable adb found (looked for "${system}" on PATH) — install platform-tools or run "npm run fetch:adb"`
+      : `${candidate} does not run on this machine and there is no adb on PATH — run "npm run fetch:adb"`
+  resolvedAdb = candidate
   return resolvedAdb
 }
 

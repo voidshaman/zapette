@@ -7,6 +7,10 @@ dist/
 # the OpenTUI docs installed locally for reference
 .agents/
 
+# platform-tools fetched by `npm run fetch:adb`, and the archive staged from it
+assets/platform-tools/
+assets/platform-tools.tar.gz
+
 # local artefacts
 .DS_Store
 screenshot.png
