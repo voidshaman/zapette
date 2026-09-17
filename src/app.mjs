@@ -1349,6 +1349,15 @@ function handleRemoteKey(key, name, ctrl, shift) {
   if (mod === "text") {
     if (!instant) {
       // Composing: the input owns the keyboard.
+      //
+      // Once a block has been sent the field is empty again, so Backspace has
+      // nothing local to delete and only means one thing: erase on the TV.
+      // Repeats batch into a single keyevent call like every other keystroke.
+      if (name === "backspace" && !textInput.value) {
+        enqueuePart({ code: KEY.DEL, label: "DEL" })
+        key.stopPropagation()
+        return
+      }
       if (name === "return") {
         const value = textInput.value
         if (value) {

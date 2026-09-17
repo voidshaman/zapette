@@ -33,11 +33,22 @@ up, and D-pad has focus at the start.
 Inside D-pad, the arrows drive the TV, Enter is OK, Backspace or b is Back, h is Home. In Volume, up
 and down change the TV volume, and the minus and plus buttons do the same; left and right switch
 module. In Text, type and press Enter to send the string, or use instant mode and every key goes to the
-TV as you type. Send mode toggles instant and block. Every on-screen button is also clickable.
+TV as you type. Backspace edits the field, and once it is empty it deletes on the TV instead, so a
+block that has already been sent can still be corrected. Send mode toggles instant and block. Every
+on-screen button is also clickable.
 
 Keys resolve in this order: Tab first, then the text box, then the shortcuts above, then the focused
 module. So while the text box has focus the keyboard belongs to it and no shortcut can fire; Tab still
 gets you out, and Escape on an empty field moves on.
+
+## Text and keyboard layouts
+
+`adb shell input text` translates each character into a **US key position** before sending, and the app
+that receives it renders that position through its own layout. A native Android field does the same
+translation back, so text arrives as typed (verified on the TCL by reading the pixels of SmartTube's
+search field). An app that maps key positions through another layout, French AZERTY say, would show
+`q` where you typed `a` and `w` where you typed `z`. If that happens in a particular app, the app is
+where to look, not the remote.
 
 ## Input latency
 
