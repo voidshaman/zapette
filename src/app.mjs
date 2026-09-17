@@ -456,6 +456,49 @@ function pushLog(line) {
   if (state.log.length > 8) state.log.length = 8
 }
 
+// ---------------------------------------------------------------- batching
+// Sending is the slow part, and it is the TV that is slow, not the network: a
+// shell round trip measures 0.07s here, but every `input` invocation starts a
+// JVM on the device and costs about 1.7s. A call per keystroke therefore makes
+// typing unusable.
+//
+// So: when nothing is on the wire, send at once (a single key press gains no
+// latency at all), and gather everything pressed while the device is busy into
+// one call. No delay timer — the 1.7s the TV takes to answer *is* the batching
+// window. The echo is applied on the key press, never on the reply, so the
+// display never trails the fingers.
+const pending = { parts: [], inFlight: 0 }
+
+/** Queue text or a keycode, merging into the neighbouring part of the same kind. */
+function enqueuePart(part) {
+  const last = pending.parts[pending.parts.length - 1]
+  if (part.text !== undefined) {
+    if (last && last.text !== undefined) last.text += part.text
+    else pending.parts.push({ text: part.text })
+  } else if (last && last.codes) {
+    last.codes.push(part.code)
+    last.label = part.label
+  } else {
+    pending.parts.push({ codes: [part.code], label: part.label })
+  }
+  if (pending.inFlight === 0) flushPending()
+}
+
+/** Send everything gathered, in order, as one call per run of the same kind. */
+function flushPending() {
+  const parts = pending.parts.splice(0)
+  for (const part of parts) {
+    if (part.text !== undefined) sendText(part.text)
+    else sendKey(part.codes, part.label)
+  }
+}
+
+/** One device call finished: anything typed meanwhile goes out now, in one call. */
+function sendDone() {
+  pending.inFlight = Math.max(0, pending.inFlight - 1)
+  if (pending.inFlight === 0 && pending.parts.length) flushPending()
+}
+
 // Every adb call runs through one chain so the TV sees inputs in order.
 let chain = Promise.resolve()
 function enqueue(fn) {
@@ -640,6 +683,7 @@ function update() {
 }
 
 function setScreen(name) {
+  flushPending() // nothing typed should be stranded by a screen change
   state.screen = name
   for (const child of [...main.getChildren()]) main.remove(child)
   main.add(name === "devices" ? devicesCol : name === "apps" ? appsCol : bodyRow)
@@ -647,38 +691,49 @@ function setScreen(name) {
 }
 
 // ---------------------------------------------------------------- actions
+/** `adb input keyevent` takes several codes at once, so a burst is one call. */
 function sendKey(code, label) {
+  const codes = Array.isArray(code) ? code : [code]
+  const what = codes.length > 1 ? `${label} x${codes.length}` : label
+  const volume = codes.some((c) => c === KEY.VOL_UP || c === KEY.VOL_DOWN)
+
   if (state.demo) {
     // Offline mode for UI work: no adb, but the UI reacts as if it worked.
     state.busy = true
     update()
-    if (code === KEY.VOL_UP || code === KEY.VOL_DOWN) {
+    if (volume) {
       // One keyevent == one step on the real TV (measured: 22 → 23).
-      const next = (state.volume ?? 0) + (code === KEY.VOL_UP ? 1 : -1)
+      const step = codes.filter((c) => c === KEY.VOL_UP).length - codes.filter((c) => c === KEY.VOL_DOWN).length
+      const next = (state.volume ?? 0) + step
       state.volume = Math.max(0, Math.min(state.volumeMax, next))
       pushLog(`✓ ${state.volume} / ${state.volumeMax}`)
     } else {
-      pushLog(`✓ ${label}`)
+      pushLog(`✓ ${what}`)
     }
     state.busy = false
-    state.lastSent = label
+    state.lastSent = what
     update()
     return
   }
+  pending.inFlight += 1
   enqueue(async () => {
-    state.busy = true
-    update()
-    const r = await keyevent(state.serial, code)
-    state.busy = false
-    state.lastSent = label
-    pushLog(r.ok ? `✓ ${label}` : `✗ ${label} — ${firstLine(r.err)}`)
-    if (code === KEY.VOL_UP || code === KEY.VOL_DOWN) {
-      const v = await musicVolume(state.serial)
-      if (v.ok) {
-        state.volume = v.volume
-        if (v.max) state.volumeMax = v.max
-        pushLog(`✓ ${state.volume} / ${state.volumeMax}`)
+    try {
+      state.busy = true
+      update()
+      const r = await keyevent(state.serial, codes)
+      state.busy = false
+      state.lastSent = what
+      pushLog(r.ok ? `✓ ${what}` : `✗ ${what} — ${firstLine(r.err)}`)
+      if (volume) {
+        const v = await musicVolume(state.serial)
+        if (v.ok) {
+          state.volume = v.volume
+          if (v.max) state.volumeMax = v.max
+          pushLog(`✓ ${state.volume} / ${state.volumeMax}`)
+        }
       }
+    } finally {
+      sendDone()
     }
     update()
   })
@@ -694,14 +749,19 @@ function sendText(text, { mirror = false } = {}) {
     update()
     return
   }
+  pending.inFlight += 1
   enqueue(async () => {
-    state.busy = true
-    update()
-    const r = await inputText(state.serial, payload)
-    state.busy = false
-    state.lastSent = `text ${JSON.stringify(payload)}`
-    if (mirror) state.echo += payload
-    pushLog(r.ok ? `✓ text ${JSON.stringify(payload)}` : `✗ text — ${firstLine(r.err)}`)
+    try {
+      state.busy = true
+      update()
+      const r = await inputText(state.serial, payload)
+      state.busy = false
+      state.lastSent = `text ${JSON.stringify(payload)}`
+      if (mirror) state.echo += payload
+      pushLog(r.ok ? `✓ text ${JSON.stringify(payload)}` : `✗ text — ${firstLine(r.err)}`)
+    } finally {
+      sendDone()
+    }
     update()
   })
 }
@@ -805,6 +865,7 @@ async function setupWol({ serial, ip, label, quiet = false }) {
 
 /** `w`: send the magic packet at the selected device (or the TV we're driving). */
 function wakeTarget(target) {
+  flushPending()
   enqueue(async () => {
     const serial = target?.serial ?? (target?.host ? `${target.host}:5555` : state.serial)
     const ip = target?.ip ?? ipOf(serial)
@@ -836,6 +897,7 @@ function wakeTarget(target) {
 
 /** `s`: put the TV we're driving to sleep — one keyevent, and the network goes with it. */
 function sleepTarget() {
+  flushPending()
   if (!state.serial) {
     pushLog("✗ no device — connect one first")
     update()
@@ -931,6 +993,7 @@ function openApps() {
  * what gets reported.
  */
 function installFromPath(input) {
+  flushPending()
   const expanded = input.startsWith("~") ? join(homedir(), input.slice(1)) : input
   const file = resolve(expanded)
   if (!existsSync(file)) {
@@ -987,6 +1050,7 @@ function installFromPath(input) {
 }
 
 function launchSelected() {
+  flushPending()
   const app = state.apps[state.appsSel]
   if (!app) return
   if (state.demo) {
@@ -1050,6 +1114,7 @@ async function refreshPanel() {
  * KEYCODE_WAKEUP, because a sleeping TV has left the network entirely.
  */
 function togglePower() {
+  flushPending()
   if (state.demo) {
     state.panel = state.panel === "Awake" ? "Asleep" : "Awake"
     pushLog(`✓ power — TV ${state.panel}`)
@@ -1304,15 +1369,21 @@ function handleRemoteKey(key, name, ctrl, shift) {
       }
       return
     }
-    // Instant: every printable key goes straight to the TV.
+    // Instant: every printable key goes to the TV, batched. The echo is local
+    // and immediate — waiting 1.7s for the device to confirm a letter is what
+    // made typing feel broken.
     if (name === "backspace") {
-      sendKey(KEY.DEL, "DEL")
+      state.echo = state.echo.slice(0, -1)
+      enqueuePart({ code: KEY.DEL, label: "DEL" })
+      update()
       key.stopPropagation()
       return
     }
     const ch = typeof key.sequence === "string" && key.sequence.length === 1 ? key.sequence : null
     if (!ctrl && ch && ch >= " ") {
-      sendText(ch, { mirror: true })
+      state.echo += ch
+      enqueuePart({ text: ch })
+      update()
       key.stopPropagation()
     }
     return
@@ -1349,7 +1420,7 @@ function handleRemoteKey(key, name, ctrl, shift) {
   if (mod === "volume") {
     if (name === "up" || name === "down") {
       const up = name === "up"
-      sendKey(up ? KEY.VOL_UP : KEY.VOL_DOWN, up ? "VOLUME_UP" : "VOLUME_DOWN")
+      enqueuePart({ code: up ? KEY.VOL_UP : KEY.VOL_DOWN, label: up ? "VOLUME_UP" : "VOLUME_DOWN" })
       key.stopPropagation()
       return
     }
@@ -1384,32 +1455,32 @@ function handleRemoteKey(key, name, ctrl, shift) {
   const arrows = { up: KEY.UP, down: KEY.DOWN, left: KEY.LEFT, right: KEY.RIGHT }
   const arrowLabels = { up: "DPAD_UP", down: "DPAD_DOWN", left: "DPAD_LEFT", right: "DPAD_RIGHT" }
   if (!ctrl && !shift && arrows[name] !== undefined) {
-    sendKey(arrows[name], arrowLabels[name])
+    enqueuePart({ code: arrows[name], label: arrowLabels[name] })
     key.stopPropagation()
     return
   }
   if (name === "return") {
-    sendKey(KEY.OK, "DPAD_CENTER")
+    enqueuePart({ code: KEY.OK, label: "DPAD_CENTER" })
     key.stopPropagation()
     return
   }
   if (name === "backspace" || name === "b") {
-    sendKey(KEY.BACK, "BACK")
+    enqueuePart({ code: KEY.BACK, label: "BACK" })
     key.stopPropagation()
     return
   }
   if (name === "h") {
-    sendKey(KEY.HOME, "HOME")
+    enqueuePart({ code: KEY.HOME, label: "HOME" })
     key.stopPropagation()
     return
   }
   if (!ctrl && (name === "+" || name === "=")) {
-    sendKey(KEY.VOL_UP, "VOLUME_UP")
+    enqueuePart({ code: KEY.VOL_UP, label: "VOLUME_UP" })
     key.stopPropagation()
     return
   }
   if (!ctrl && (name === "-" || name === "_")) {
-    sendKey(KEY.VOL_DOWN, "VOLUME_DOWN")
+    enqueuePart({ code: KEY.VOL_DOWN, label: "VOLUME_DOWN" })
     key.stopPropagation()
   }
 }

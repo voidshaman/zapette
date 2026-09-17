@@ -39,6 +39,14 @@ Keys resolve in this order: Tab first, then the text box, then the shortcuts abo
 module. So while the text box has focus the keyboard belongs to it and no shortcut can fire; Tab still
 gets you out, and Escape on an empty field moves on.
 
+## Input latency
+
+Every `input` invocation starts a JVM on the TV: measured at roughly 1.7 seconds on the TCL, while a
+shell round trip over the same link is 0.07 seconds. A call per keystroke is therefore unusable, so the
+app sends immediately when the device is idle and gathers everything pressed while it is busy into
+single calls. Ten characters cost two calls, not ten; three quick arrow presses cost two, not three.
+The echo on screen is local and immediate, so the display never waits for the TV to answer.
+
 ## Power
 
 Off is a single keyevent. The TV goes dark within a few seconds and drops off the network with the

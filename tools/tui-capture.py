@@ -31,8 +31,21 @@ def parse_args():
     p.add_argument("--cols", type=int, default=190)
     p.add_argument("--rows", type=int, default=46)
     p.add_argument("--wait", type=float, default=0.0, help="wait this long before the next --send")
-    p.add_argument("--send", action="append", default=[], help="bytes to send (\\x1b etc. decoded)")
+    p.add_argument(
+        "--send",
+        action="append",
+        default=[],
+        help="bytes to send; a 'SECONDS:' prefix overrides the wait for that one send",
+    )
     return p.parse_args()
+
+
+def send_delay(value, default):
+    """A --send value may carry its own delay: '0.3:hello'."""
+    head, sep, rest = value.partition(":")
+    if sep and rest and head.replace(".", "", 1).isdigit():
+        return float(head), rest
+    return default, value
 
 
 def decode(s):
@@ -177,8 +190,9 @@ def main():
     plan = []
     at = args.wait
     for s in args.send:
-        plan.append((at, decode(s)))
-        at += args.wait
+        delay, payload = send_delay(s, args.wait)
+        at += delay
+        plan.append((at, decode(payload)))
 
     start = time.time()
     idx = 0
