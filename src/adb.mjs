@@ -12,7 +12,7 @@
 //   4. the single-file payload that ships in ./assets — macOS only, it is Mach-O
 //   5. whatever `adb` (or `adb.exe`) is on PATH
 import { execFile, spawn } from "node:child_process"
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs"
 import * as net from "node:net"
 import { networkInterfaces } from "node:os"
 import { dirname, join } from "node:path"
@@ -34,24 +34,6 @@ export function toolsDir(key = platformKey()) {
 /** The message to show if the resolved adb had to be swapped or is missing. */
 export function adbNote() {
   return adbWarning
-}
-
-/** Write bundled bytes somewhere exec'able, reusing an identical existing copy. */
-function materialize(bytes, tag) {
-  const dir = join(cacheDir(), "tv-remote-tui")
-  const target = join(dir, `adb-${tag}`)
-  try {
-    if (existsSync(target) && statSync(target).size === bytes.length) {
-      chmodSync(target, 0o755)
-      return target
-    }
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(target, bytes, { mode: 0o755 })
-    chmodSync(target, 0o755)
-    return target
-  } catch {
-    return null
-  }
 }
 
 /** Unpack an embedded platform-tools.tar.gz, once, and return its adb. */
@@ -79,20 +61,16 @@ async function resolveAdb() {
 
   // 1) embedded at compile time (Bun only — Node has no "file" import type).
   //    A "slim" build defines EMBED_ADB=0 and falls through to a system adb.
+  //    Only the archive is embedded: a second, single-file import used to sit
+  //    here as well, and Bun bundles every static import whether the branch runs
+  //    or not, which put 18 MB of unused adb inside even the slim binary.
   if (typeof globalThis.Bun !== "undefined" && process.env.EMBED_ADB !== "0") {
     try {
       const asset = await import("../assets/platform-tools.tar.gz", { with: { type: "file" } })
       const unpacked = unpackEmbedded(readFileSync(asset.default), platformKey())
       if (unpacked) return unpacked
     } catch {
-      // no archive embedded — try the older single-file payload
-    }
-    try {
-      const asset = await import("../assets/adb", { with: { type: "file" } })
-      const path = materialize(readFileSync(asset.default), "bundled")
-      if (path) return path
-    } catch {
-      // fall through
+      // no archive embedded
     }
   }
 

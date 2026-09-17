@@ -24,6 +24,16 @@ function run(cmd, args, options = {}) {
   execFileSync(cmd, args, { stdio: "inherit", cwd: root, ...options })
 }
 
+/**
+ * Cross-building installs foreign native packages, and a later host build would
+ * embed them too (the binary grew from 75 to 93 MB that way). Put the tree back
+ * the way npm wants it for this machine once the cross-builds are done.
+ */
+function pruneToHost() {
+  console.log("[build] restoring the local package tree")
+  run("npm", ["install", "--no-audit", "--no-fund"], { stdio: "ignore" })
+}
+
 function ensureBun() {
   try {
     run("bun", ["--version"], { stdio: "ignore" })
@@ -104,12 +114,14 @@ async function main() {
         console.error(`[build] ${target} failed: ${error.message}`)
       }
     }
+    if (!argv.includes("--keep-natives")) pruneToHost()
     return
   }
   const flag = argv.find((arg) => arg === "--target" || arg.startsWith("--target="))
   const target =
     flag === "--target" ? argv[argv.indexOf(flag) + 1] : flag ? flag.slice("--target=".length) : platformKey()
   await build(target, { slim })
+  if (target !== platformKey() && !argv.includes("--keep-natives")) pruneToHost()
 }
 
 main().catch((error) => {
