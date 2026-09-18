@@ -1,4 +1,4 @@
-package com.tvremote.companion;
+package com.zapette.companion;
 
 import android.content.Context;
 import android.os.SystemClock;

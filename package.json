@@ -1,11 +1,11 @@
 {
-  "name": "tv-remote-tui",
+  "name": "zapette",
   "version": "0.1.0",
   "private": true,
   "description": "Tiny OpenTUI remote that pilots an Android TV over wireless ADB",
   "type": "module",
   "bin": {
-    "tv-remote-tui": "./run.sh"
+    "zapette": "./run.sh"
   },
   "scripts": {
     "start": "node run.mjs",

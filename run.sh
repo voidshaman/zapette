@@ -13,5 +13,5 @@ if [ -x "$HOME/.hermes/node/bin/node" ]; then
   exec "$HOME/.hermes/node/bin/node" "$here/run.mjs" "$@"
 fi
 
-echo "tv-remote-tui: needs Node 26.4 or newer, or NODE_BIN pointing at one" >&2
+echo "zapette: needs Node 26.4 or newer, or NODE_BIN pointing at one" >&2
 exit 1

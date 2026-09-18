@@ -1,5 +1,5 @@
 #!/bin/bash
-# Prerequisite install for the companion-APK route (tv-remote-tui).
+# Prerequisite install for the companion-APK route (zapette).
 # x86_64 macOS 26.3: brew's openjdk@17 is Tier 3 (builds from source) -> use the
 # Temurin tarball instead. No sudo, lands under ~/.local/jdk.
 set -uo pipefail

@@ -11,7 +11,7 @@ import { spawn } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
-export const APK_PATH = "dist/tv-companion.apk"
+export const APK_PATH = "dist/zapette-companion.apk"
 export const BUILD_SCRIPT = "companion/build.sh"
 const SOURCE_DIR = "companion"
 // Intermediates of a --debug build; they are not inputs.

@@ -1,4 +1,4 @@
-package com.tvremote.companion;
+package com.zapette.companion;
 
 import android.content.ContentResolver;
 import android.content.Context;
@@ -19,7 +19,7 @@ import java.util.Locale;
  * is WRITE_SECURE_SETTINGS, held by adb shell (uid 2000) and by no ordinary app - but it is
  * flagged `development`, so adb can hand it to this package once and it stays granted:
  *
- *     pm grant com.tvremote.companion android.permission.WRITE_SECURE_SETTINGS
+ *     pm grant com.zapette.companion android.permission.WRITE_SECURE_SETTINGS
  *
  * Everything below is the same two secure settings the shell command touches, written
  * in-process. InputMethodManagerService watches DEFAULT_INPUT_METHOD and rebinds, which is
@@ -37,12 +37,12 @@ import java.util.Locale;
 public final class ImeSelect {
 
     /** The companion's IME component, in the short form `ime list -s -a` prints. */
-    public static final String IME_ID = "com.tvremote.companion/.CompanionIme";
+    public static final String IME_ID = "com.zapette.companion/.CompanionIme";
 
     public static final String PERMISSION = "android.permission.WRITE_SECURE_SETTINGS";
 
     /** The one adb call that unlocks this, echoed back to the client when it is missing. */
-    public static final String GRANT = "pm grant com.tvremote.companion " + PERMISSION;
+    public static final String GRANT = "pm grant com.zapette.companion " + PERMISSION;
 
     private static final String PREFS = "companion";
     private static final String KEY_PREVIOUS = "previous_ime";

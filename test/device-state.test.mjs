@@ -1,7 +1,7 @@
 // The per-device setup state: what makes "first connect" a fact, and what keeps
 // the question from being asked twice.
 //
-// These run against a real directory (a temp one, via TV_REMOTE_CONFIG_DIR), so
+// These run against a real directory (a temp one, via ZAPETTE_CONFIG_DIR), so
 // what is checked is the file the app will actually read and write — including
 // the MAC fallback that keeps a re-leased TV's record findable.
 import test from "node:test"
@@ -21,8 +21,8 @@ import {
   writeDeviceState,
 } from "../src/device-state.mjs"
 
-const configDir = fs.mkdtempSync(join(os.tmpdir(), "tv-remote-tui-state-"))
-process.env.TV_REMOTE_CONFIG_DIR = configDir
+const configDir = fs.mkdtempSync(join(os.tmpdir(), "zapette-state-"))
+process.env.ZAPETTE_CONFIG_DIR = configDir
 
 const tv = { serial: "192.168.1.50:5555", model: "Smart TV Pro" }
 const MAC = "8c:3b:b3:b4:1e:47" // macOS `arp` prints this with a short first octet

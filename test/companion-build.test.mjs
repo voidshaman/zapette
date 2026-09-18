@@ -11,7 +11,7 @@ import { join } from "node:path"
 import { BUILD_SCRIPT, companionApkStatus, newestSourceMtime, repoRoot } from "../src/companion-build.mjs"
 
 function fixture() {
-  const root = fs.mkdtempSync(join(os.tmpdir(), "tv-remote-tui-apk-"))
+  const root = fs.mkdtempSync(join(os.tmpdir(), "zapette-apk-"))
   fs.mkdirSync(join(root, "dist"), { recursive: true })
   fs.mkdirSync(join(root, "companion", "src"), { recursive: true })
   fs.writeFileSync(join(root, BUILD_SCRIPT), "#!/usr/bin/env bash\nexit 0\n")
@@ -38,7 +38,7 @@ test("an APK newer than the sources is what the setup installs", () => {
   const java = join(root, "companion", "src", "Thing.java")
   fs.writeFileSync(java, "class Thing {}\n")
   touch(java, 600)
-  const apk = join(root, "dist", "tv-companion.apk")
+  const apk = join(root, "dist", "zapette-companion.apk")
   fs.writeFileSync(apk, "APK")
   touch(apk, 60)
 
@@ -50,7 +50,7 @@ test("an APK newer than the sources is what the setup installs", () => {
 
 test("a source newer than the APK makes it stale — and a missing build script is its own answer", () => {
   const root = fixture()
-  const apk = join(root, "dist", "tv-companion.apk")
+  const apk = join(root, "dist", "zapette-companion.apk")
   fs.writeFileSync(apk, "APK")
   touch(apk, 600)
   const java = join(root, "companion", "src", "Thing.java")
@@ -67,7 +67,7 @@ test("a source newer than the APK makes it stale — and a missing build script 
 
 test("a leftover build directory is not a source", () => {
   const root = fixture()
-  const apk = join(root, "dist", "tv-companion.apk")
+  const apk = join(root, "dist", "zapette-companion.apk")
   fs.writeFileSync(apk, "APK")
   touch(apk, 600)
   const intermediate = join(root, "companion", "build")
@@ -81,7 +81,7 @@ test("a leftover build directory is not a source", () => {
 
 test("notes are not sources: editing a README must not rebuild the APK", () => {
   const root = fixture()
-  const apk = join(root, "dist", "tv-companion.apk")
+  const apk = join(root, "dist", "zapette-companion.apk")
   fs.writeFileSync(apk, "APK")
   touch(apk, 600)
   const java = join(root, "companion", "src", "Thing.java")
@@ -101,5 +101,5 @@ test("this repository's own APK is present and not older than its sources", (t) 
   // freshness guard for a working tree, not a correctness assertion: skip it
   // rather than fail, or CI reports a bug that is not one.
   if (!status.present) return t.skip(`no prebuilt APK at ${status.path} (dist/ is not committed)`)
-  assert.equal(status.stale, false, "dist/tv-companion.apk is older than companion/ — the setup would rebuild it")
+  assert.equal(status.stale, false, "dist/zapette-companion.apk is older than companion/ — the setup would rebuild it")
 })

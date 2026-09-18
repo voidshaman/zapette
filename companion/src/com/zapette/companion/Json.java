@@ -1,4 +1,4 @@
-package com.tvremote.companion;
+package com.zapette.companion;
 
 import java.util.ArrayList;
 import java.util.List;

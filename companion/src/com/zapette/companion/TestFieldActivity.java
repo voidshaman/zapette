@@ -1,4 +1,4 @@
-package com.tvremote.companion;
+package com.zapette.companion;
 
 import android.app.Activity;
 import android.content.ComponentName;
@@ -105,7 +105,7 @@ public class TestFieldActivity extends Activity {
         root.addView(stream, fullWidth());
 
         setContentView(root);
-        setTitle("TV Remote Companion");
+        setTitle("Zapette Companion");
     }
 
     /** Shared look: monospace, 32sp, light on black with a visible edge. A TV screen in a

@@ -1,4 +1,4 @@
-# TV Remote Companion
+# Zapette Companion
 
 A small pure-Java APK that runs on the TV side by side with the TUI. It holds a
 foreground service and answers commands on a TCP socket bound to the TV's own
@@ -13,19 +13,19 @@ the LAN at all (see Security below). The adb path stays as the fallback.
 No Gradle: the script drives aapt2 + javac + d8 + zipalign + apksigner itself.
 It finds JAVA_HOME (`~/.local/jdk/temurin-17/Contents/Home`) and the SDK
 (`~/Library/Android/sdk`) on its own, and creates the signing key on first run.
-Output: `dist/tv-companion.apk`.
+Output: `dist/zapette-companion.apk`.
 
 ## Install
 
-    ./assets/adb install -r -d dist/tv-companion.apk
-    ./assets/adb shell pm grant com.tvremote.companion android.permission.WRITE_SECURE_SETTINGS   # once
-    ./assets/adb shell am start-foreground-service -n com.tvremote.companion/.CompanionService
+    ./assets/adb install -r -d dist/zapette-companion.apk
+    ./assets/adb shell pm grant com.zapette.companion android.permission.WRITE_SECURE_SETTINGS   # once
+    ./assets/adb shell am start-foreground-service -n com.zapette.companion/.CompanionService
 
 Or launch it from the TV's app row; the activity starts the service on the way in.
 
 Then pair it, or it refuses every connection (fail closed — see Security below):
 
-    ./assets/adb shell am start-foreground-service -n com.tvremote.companion/.CompanionService \
+    ./assets/adb shell am start-foreground-service -n com.zapette.companion/.CompanionService \
         --es companion_secret <64 hex chars>
 
 The client does that step itself the first time it finds a companion answering
@@ -58,14 +58,14 @@ so an unprovisioned companion is usable by nobody rather than by everybody.
 The secret is provisioned over adb and only over adb - adb is the trust root here (RSA
 key plus the TV's on-screen confirmation) - and never crosses the socket:
 
-    ./assets/adb shell am start-foreground-service -n com.tvremote.companion/.CompanionService \
+    ./assets/adb shell am start-foreground-service -n com.zapette.companion/.CompanionService \
         --es companion_secret <64 hex chars>
-    ./assets/adb shell am start-foreground-service -n com.tvremote.companion/.CompanionService \
+    ./assets/adb shell am start-foreground-service -n com.zapette.companion/.CompanionService \
         --ez companion_forget_secret true          # un-pair: it refuses everyone again
 
 It lands in `SharedPreferences(MODE_PRIVATE)`, is never logged or echoed in a reply, and
 survives a process restart. The client keeps its own copy at
-`~/.config/tv-remote-tui/companion-<device>.key` (mode 0600, 32 random bytes) and pushes
+`~/.config/zapette/companion-<device>.key` (mode 0600, 32 random bytes) and pushes
 it when the TV answers `no_secret` - the normal first-run path for an APK installed
 before this layer existed, not an error path.
 
@@ -102,8 +102,8 @@ changing the transport.
 keycodes are involved, so the TV's own keyboard cannot remap the letters or eat a
 repeated character. Enable it with the id `ime list -s -a` prints - the short form:
 
-    ./assets/adb shell ime enable com.tvremote.companion/.CompanionIme
-    ./assets/adb shell ime set com.tvremote.companion/.CompanionIme
+    ./assets/adb shell ime enable com.zapette.companion/.CompanionIme
+    ./assets/adb shell ime set com.zapette.companion/.CompanionIme
     printf 'commit aabbllll\n' | nc 127.0.0.1:$FWD   # see "Talk to it": forward + AUTH handshake first
     {"ok":true,"cmd":"commit","len":8,"text":"aabbllll"}
 
@@ -122,7 +122,7 @@ back with `ime set <its id>` when you are done, and `ime disable` the companion.
 This is `ime set` without adb. Both write the same secure setting, but the app can only do
 it with WRITE_SECURE_SETTINGS, a privileged permission it gets from one adb call:
 
-    ./assets/adb shell pm grant com.tvremote.companion android.permission.WRITE_SECURE_SETTINGS
+    ./assets/adb shell pm grant com.zapette.companion android.permission.WRITE_SECURE_SETTINGS
 
 Granted once, it stays granted across `am force-stop` and a restart of the process (the
 grant lives in the package manager, not in the process). `on` records the TV's own IME
@@ -140,7 +140,7 @@ guessing one. `state` reads only.
 Without the grant every verb answers
 
     {"ok":false,"error":"no_write_secure_settings","need":"android.permission.WRITE_SECURE_SETTINGS",
-     "grant":"pm grant com.tvremote.companion android.permission.WRITE_SECURE_SETTINGS","fallback":"adb"}
+     "grant":"pm grant com.zapette.companion android.permission.WRITE_SECURE_SETTINGS","fallback":"adb"}
 
 which is the client's cue to use the adb `ime enable` + `ime set` path - it must not retry
 the socket verb. `ime off` never leaves the companion IME selected by accident: the one
@@ -207,7 +207,7 @@ The verbs, and the measured contrast, are the same for both targets:
     background - TCL denies this app the foreground-service state, so it sits at
     IMPORTANT_BACKGROUND - it answers `ok:false` / `field_not_front` with a `hint` naming
     the one adb call that brings the screen up:
-    `am start -n com.tvremote.companion/.TestFieldActivity` (measured 0.145-0.31 s, no keyevent).
+    `am start -n com.zapette.companion/.TestFieldActivity` (measured 0.145-0.31 s, no keyevent).
     `target` does the same for the field it switched to, and switches the target even when
     the screen cannot come up.
   - `set <text>` clears the field, then commits the text through the IME's live
@@ -289,7 +289,7 @@ framework never connected.
 Enabling it - READ the value, then APPEND (never overwrite):
 
     ./assets/adb shell settings get secure enabled_accessibility_services
-    ./assets/adb shell settings put secure enabled_accessibility_services "<that value>:com.tvremote.companion/.CompanionAccess"
+    ./assets/adb shell settings put secure enabled_accessibility_services "<that value>:com.zapette.companion/.CompanionAccess"
     ./assets/adb shell settings put secure accessibility_enabled 1
 
 The TV already has its own launcher service in that setting, and overwriting the value
@@ -310,7 +310,7 @@ StreamingTextView carrying that id.
 TCL does not keep the companion alive on its own: TGuard kills the process seconds to a
 minute after start ("tguard-kill", adj 100/200) and the app-idle policy stops
 `CompanionService`, so the socket answers only while the process is up.
-`am start-foreground-service -n com.tvremote.companion/.CompanionService` brings it back in
+`am start-foreground-service -n com.zapette.companion/.CompanionService` brings it back in
 under a second; the client's start-on-demand probe is what makes that invisible.
 
 ## What the accessibility path costs, and what it does not do
@@ -385,7 +385,7 @@ three of these five answer `performed:true` and change not one pixel.
 What works, verified against the window list, the node tree AND the framebuffer:
 
   - `home` - yes: from the companion's own activity mCurrentFocus moved to the launcher and the
-    tree went 8 nodes/com.tvremote.companion -> 47 nodes/com.leanbitlab.ltvL (3/3 runs).
+    tree went 8 nodes/com.zapette.companion -> 47 nodes/com.leanbitlab.ltvL (3/3 runs).
   - `back` - yes, as a BACK and not a "go up". While the soft keyboard is up the FIRST back goes
     to the keyboard (measured: the frame after it lost the keyboard, focus unchanged), and the
     next one finishes the activity. On the launcher it does nothing, like any remote's back.
@@ -402,6 +402,6 @@ device-side).
 
 ## Signing key
 
-`~/.tv-companion/android.keystore`, alias `tvcompanion`, created by the build
+`~/.zapette/android.keystore`, alias `zapette`, created by the build
 script on first run. Keep it: Android refuses an update signed with a different
 key, and installing over the old build then means uninstalling first.

@@ -1,4 +1,4 @@
-package com.tvremote.companion;
+package com.zapette.companion;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
@@ -43,7 +43,7 @@ import java.util.concurrent.TimeUnit;
 public class CompanionAccess extends AccessibilityService {
 
     /** The enabled-services component name, in the short form the settings value uses. */
-    public static final String SERVICE_ID = "com.tvremote.companion/.CompanionAccess";
+    public static final String SERVICE_ID = "com.zapette.companion/.CompanionAccess";
 
     /**
      * The flags this service asks for, and why exactly these two:

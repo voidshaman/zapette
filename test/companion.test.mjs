@@ -29,8 +29,8 @@ import {
 } from "../src/companion.mjs"
 
 // Keep the real ~/.config out of this: the key path is the thing under test.
-const configDir = fs.mkdtempSync(join(os.tmpdir(), "tv-remote-tui-test-"))
-process.env.TV_REMOTE_CONFIG_DIR = configDir
+const configDir = fs.mkdtempSync(join(os.tmpdir(), "zapette-test-"))
+process.env.ZAPETTE_CONFIG_DIR = configDir
 
 // ---------------------------------------------------------------- the HMAC
 

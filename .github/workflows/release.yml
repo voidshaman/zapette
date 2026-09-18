@@ -46,9 +46,15 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: zapette-binaries
+          # Not `dist/zapette*`: that would also sweep up the APK and its .idsig
+          # sidecar. These are the stems scripts/build.mjs writes.
           path: |
-            dist/tv-remote-tui*
-            dist/tv-companion.apk
+            dist/zapette
+            dist/zapette-slim
+            dist/zapette-darwin-*
+            dist/zapette-linux-*
+            dist/zapette-win32-*
+            dist/zapette-companion.apk
           if-no-files-found: error
 
       - name: Publish the release
@@ -56,14 +62,18 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/tv-remote-tui*
-            dist/tv-companion.apk
+            dist/zapette
+            dist/zapette-slim
+            dist/zapette-darwin-*
+            dist/zapette-linux-*
+            dist/zapette-win32-*
+            dist/zapette-companion.apk
           generate_release_notes: true
           body: |
             Client binaries for each platform (adb embedded) and the companion
             APK for the TV. Install the APK on the TV with:
 
-                adb install -r tv-companion.apk
+                adb install -r zapette-companion.apk
 
             The client installs and pairs it for you on first connect if you
             answer yes at the prompt.

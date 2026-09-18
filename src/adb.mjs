@@ -27,9 +27,9 @@ const execFileP = promisify(execFile)
 let resolvedAdb = null
 let adbWarning = null
 
-/** Where an unpacked toolchain lives: <cache>/tv-remote-tui/platform-tools/<key>. */
+/** Where an unpacked toolchain lives: <cache>/zapette/platform-tools/<key>. */
 export function toolsDir(key = platformKey()) {
-  return join(cacheDir(), "tv-remote-tui", "platform-tools", key)
+  return join(cacheDir(), "zapette", "platform-tools", key)
 }
 
 /** The message to show if the resolved adb had to be swapped or is missing. */

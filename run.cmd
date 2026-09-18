@@ -7,7 +7,7 @@ if defined NODE_BIN (
 )
 where node >nul 2>nul
 if errorlevel 1 (
-  echo tv-remote-tui: needs Node 26.4 or newer, or NODE_BIN pointing at one
+  echo zapette: needs Node 26.4 or newer, or NODE_BIN pointing at one
   exit /b 1
 )
 node "%~dp0run.mjs" %*

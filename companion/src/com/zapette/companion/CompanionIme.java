@@ -1,4 +1,4 @@
-package com.tvremote.companion;
+package com.zapette.companion;
 
 import android.graphics.Color;
 import android.graphics.Typeface;

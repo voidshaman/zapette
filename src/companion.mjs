@@ -46,13 +46,13 @@ import { adb, adbBinary, connectDevice, packagePath, probePort } from "./adb.mjs
 import { deviceState } from "./power.mjs"
 
 export const COMPANION = {
-  pkg: "com.tvremote.companion",
-  service: "com.tvremote.companion/.CompanionService",
+  pkg: "com.zapette.companion",
+  service: "com.zapette.companion/.CompanionService",
   port: 7900,
   // The device side of `adb -s <serial> forward tcp:X tcp:7900`: the companion only
   // ever listens on the TV's own loopback, so adb is the only way in.
   adbPort: 5555,
-  apk: "dist/tv-companion.apk",
+  apk: "dist/zapette-companion.apk",
   secretExtra: "companion_secret",
   forgetExtra: "companion_forget_secret",
   keyPrefix: "companion-",
@@ -63,7 +63,7 @@ export const COMPANION = {
 // *selected* one, so this has to be the TV's current input method for text to
 // land. Since t_14c284f4 the companion selects it ITSELF (`ime on`) by writing the
 // same secure setting adb's `ime set` writes — the typing path carries no adb call.
-export const COMPANION_IME = "com.tvremote.companion/.CompanionIme"
+export const COMPANION_IME = "com.zapette.companion/.CompanionIme"
 
 // The one adb command that unlocks in-process selection, run once per install:
 // WRITE_SECURE_SETTINGS is a privileged permission, and `pm grant` is the only way
@@ -97,15 +97,15 @@ export function companionApk() {
 // ---------------------------------------------------------------- the secret
 
 /**
- * Where the per-device key lives: `~/.config/tv-remote-tui/companion-<device>.key`
- * (XDG_CONFIG_HOME honoured, TV_REMOTE_CONFIG_DIR overrides it — the tests use
+ * Where the per-device key lives: `~/.config/zapette/companion-<device>.key`
+ * (XDG_CONFIG_HOME honoured, ZAPETTE_CONFIG_DIR overrides it — the tests use
  * that to keep a real key file out of the way).
  */
 export function companionConfigDir() {
-  const override = process.env.TV_REMOTE_CONFIG_DIR
+  const override = process.env.ZAPETTE_CONFIG_DIR
   if (override) return override
   const base = process.env.XDG_CONFIG_HOME || join(os.homedir(), ".config")
-  return join(base, "tv-remote-tui")
+  return join(base, "zapette")
 }
 
 /** A file-safe device key: the adb serial, with the `:` of `ip:5555` made safe. */
@@ -303,7 +303,7 @@ function classify(error) {
 /**
  * One authenticated command: dial the forward, answer the nonce, then send the
  * command on the same connection. One line in, one JSON line out — the companion's
- * own framing (see companion/src/com/tvremote/companion/CompanionServer.java).
+ * own framing (see companion/src/com/zapette/companion/CompanionServer.java).
  *
  * The handshake is not optional and not skippable: the verb line is only written
  * after `AUTH <hmac>` has gone out, and the companion runs no verb until it has
@@ -559,7 +559,7 @@ export async function pairCompanion(device, { rotate = false, onStep } = {}) {
 // ---------------------------------------------------------------- lifecycle
 
 /**
- * `am start-foreground-service -n com.tvremote.companion/.CompanionService`.
+ * `am start-foreground-service -n com.zapette.companion/.CompanionService`.
  *
  * The command's output is not the verdict — `am` reports what it dispatched, not
  * what came up — so only an explicit error is believed here, and the socket

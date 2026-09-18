@@ -1,4 +1,4 @@
-package com.tvremote.companion;
+package com.zapette.companion;
 
 import android.app.Activity;
 import android.content.Intent;
@@ -27,7 +27,7 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Color.BLACK);
         root.addView(status);
         setContentView(root);
-        setTitle("TV Remote Companion");
+        setTitle("Zapette Companion");
     }
 
     @Override

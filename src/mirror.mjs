@@ -16,7 +16,7 @@ import { adb, keyevent, inputText, KEY } from "./adb.mjs"
 
 // Leanback's search field; other apps name theirs differently.
 export const LEANBACK_FIELD = "lb_search_text_editor"
-const DUMP_PATH = "/sdcard/tv-remote-ui.xml"
+const DUMP_PATH = "/sdcard/zapette-ui.xml"
 
 /** Find the field node in a uiautomator dump. Pure, so it can be tested. */
 export function findFieldNode(xml, id = LEANBACK_FIELD) {

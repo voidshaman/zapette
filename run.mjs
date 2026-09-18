@@ -56,7 +56,7 @@ for (const bin of candidates()) {
 }
 
 if (!chosen) {
-  console.error(`tv-remote-tui needs Node ${MIN.join(".")} or newer, and could not find one.`)
+  console.error(`zapette needs Node ${MIN.join(".")} or newer, and could not find one.`)
   console.error("Install it from https://nodejs.org, or set NODE_BIN to an existing install.")
   process.exit(1)
 }

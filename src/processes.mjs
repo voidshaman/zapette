@@ -169,7 +169,7 @@ export async function stopPackage(serial, pkg) {
 export const DEMO_PROCS = [
   { pkg: "org.smarttube.stable", pid: 3972, user: true },
   { pkg: "com.fgl27.twitch", pid: 1219, user: true },
-  { pkg: "com.tvremote.companion", pid: 4211, user: true },
+  { pkg: "com.zapette.companion", pid: 4211, user: true },
   { pkg: "com.android.systemui", pid: 1035, user: false },
   { pkg: "com.tcl.esticker", pid: 2642, user: false },
   { pkg: "com.google.android.gms", pid: 1735, user: false },

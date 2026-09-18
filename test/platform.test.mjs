@@ -13,7 +13,7 @@ import { createTar, createTarGz, extractTar, extractTarGz } from "../src/archive
 import { arpMac, normalizeMac, parseArp, parseMac } from "../src/arp.mjs"
 import { adbFiles, adbName, bunTarget, cacheDir, platformKey, platformToolsUrl, stateDir } from "../src/platform.mjs"
 
-const scratch = () => mkdtempSync(join(tmpdir(), "tv-remote-test-"))
+const scratch = () => mkdtempSync(join(tmpdir(), "zapette-test-"))
 
 test("target naming matches OpenTUI packages and Bun's --target", () => {
   assert.equal(platformKey("darwin", "arm64"), "darwin-arm64")
@@ -32,7 +32,7 @@ test("cache directory follows each system's convention", () => {
 
 test("state directory follows each system's convention", () => {
   assert.match(stateDir("darwin", {}, "/Users/x"), /Library\/Application Support|\/Users\/x\/\.config/)
-  assert.ok(stateDir("linux", {}, "/home/x").includes("tv-remote-tui"))
+  assert.ok(stateDir("linux", {}, "/home/x").includes("zapette"))
   assert.ok(stateDir("win32", { APPDATA: "C:/Users/x/AppData/Roaming" }, "C:/Users/x").startsWith("C:/Users/x/AppData/Roaming"))
 })
 

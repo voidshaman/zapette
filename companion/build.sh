@@ -2,7 +2,7 @@
 # Builds the companion APK with the SDK command-line tools only: aapt2 + javac +
 # d8 + zipalign + apksigner. No Gradle, no network, no Kotlin.
 #
-#   companion/build.sh            -> <repo>/dist/tv-companion.apk
+#   companion/build.sh            -> <repo>/dist/zapette-companion.apk
 #   companion/build.sh --debug    keeps the intermediate tree at companion/build
 #
 # Self-locating: JAVA_HOME and the Android SDK are discovered, and a missing one
@@ -12,8 +12,8 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 build="$here/build"
-out="$root/dist/tv-companion.apk"
-ks="$HOME/.tv-companion/android.keystore"
+out="$root/dist/zapette-companion.apk"
+ks="$HOME/.zapette/android.keystore"
 
 debug=0
 [ "${1:-}" = "--debug" ] && debug=1
@@ -77,8 +77,8 @@ if [ ! -f "$ks" ]; then
   echo "creating keystore $ks"
   mkdir -p "$(dirname "$ks")"
   "$JAVA_HOME/bin/keytool" -genkeypair -keystore "$ks" \
-    -storepass android -keypass android -alias tvcompanion \
-    -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=tv-companion, O=zapette" >/dev/null
+    -storepass android -keypass android -alias zapette \
+    -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=zapette-companion, O=zapette" >/dev/null
 fi
 
 # --- build --------------------------------------------------------------------
@@ -113,7 +113,7 @@ echo "zipalign"
 
 echo "apksigner"
 "$bt/apksigner" sign \
-  --ks "$ks" --ks-pass pass:android --key-pass pass:android --ks-key-alias tvcompanion \
+  --ks "$ks" --ks-pass pass:android --key-pass pass:android --ks-key-alias zapette \
   --out "$out" "$build/aligned.apk"
 
 "$bt/apksigner" verify --print-certs "$out" | head -3

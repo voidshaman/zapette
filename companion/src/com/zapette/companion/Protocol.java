@@ -1,4 +1,4 @@
-package com.tvremote.companion;
+package com.zapette.companion;
 
 import android.os.Build;
 import android.os.Process;
@@ -503,7 +503,7 @@ public final class Protocol {
             // (min 0.145 s), then `field focus` is instant. Say so instead of making the caller
             // guess.
             if ("field_not_front".equals(s.error) || "field_not_focused".equals(s.error)) {
-                o.putStr("hint", "am start -n com.tvremote.companion/.TestFieldActivity");
+                o.putStr("hint", "am start -n com.zapette.companion/.TestFieldActivity");
             }
             return o.done();
         }

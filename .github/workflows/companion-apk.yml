@@ -32,16 +32,16 @@ jobs:
           set -e
           echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
           ./companion/build.sh
-          ls -l dist/tv-companion.apk
+          ls -l dist/zapette-companion.apk
 
       - name: Verify the signature (an unsigned APK would install nowhere)
         run: |
           set -e
           BT="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)"
-          "$BT/apksigner" verify --print-certs dist/tv-companion.apk
+          "$BT/apksigner" verify --print-certs dist/zapette-companion.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: tv-companion-apk
-          path: dist/tv-companion.apk
+          name: zapette-companion-apk
+          path: dist/zapette-companion.apk
           if-no-files-found: error

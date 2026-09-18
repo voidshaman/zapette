@@ -87,8 +87,8 @@ async function build(target, { slim }) {
   installNative(target)
   const stem =
     target === platformKey()
-      ? `dist/tv-remote-tui${slim ? "-slim" : ""}`
-      : `dist/tv-remote-tui-${target}${slim ? "-slim" : ""}`
+      ? `dist/zapette${slim ? "-slim" : ""}`
+      : `dist/zapette-${target}${slim ? "-slim" : ""}`
   // Windows binaries carry .exe; say it explicitly so the reported path matches
   // what Bun writes (it would add the extension itself otherwise).
   const outfile = splitKey(target).platform === "win32" ? `${stem}.exe` : stem

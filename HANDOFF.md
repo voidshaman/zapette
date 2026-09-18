@@ -6,13 +6,13 @@ TV this was built against: a TCL Android TV, Android 11 (API 30), armeabi-v7a,
 
 ## Where it stands
 
-Repo `~/Projects/tv-remote-tui`, branch `main`, local only, nothing pushed.
+Repo `~/Projects/zapette`, branch `main`, local only, nothing pushed.
 HEAD `4606c07`, 34 tests passing (`npm test`, with a Node 26.4+; the PATH `node`
 here is 25.6.1 and the suite does not start under it).
 
 Uncommitted in the working tree: `src/companion.mjs` (new), the typing route and
 mirror reads in `src/app.mjs`, `src/mirror.mjs` taking the caller's insert, the
-`companion/` APK sources, `dist/tv-companion.apk`, and the README/HANDOFF changes
+`companion/` APK sources, `dist/zapette-companion.apk`, and the README/HANDOFF changes
 that go with them.
 
 Commits, oldest first: `41e4966` initial, `135fe58` cross-platform, `3a970c6`
@@ -22,7 +22,7 @@ the pass-through keyboard, `4606c07` the companion handoff.
 
 Binaries in `dist/`, all six built after `9d84613`: macOS x64 87.6 MB, macOS
 arm64 80.6 MB, Linux x64 102.8 MB, Linux arm64 102.0 MB, Windows x64 101.0 MB,
-Windows arm64 91.9 MB. `dist/tv-remote-tui-slim` is stale (predates mirror mode)
+Windows arm64 91.9 MB. `dist/zapette-slim` is stale (predates mirror mode)
 and is only produced by `npm run build:exe:slim`.
 
 ## What the app does today
@@ -239,7 +239,7 @@ fast read is lease-scoped.
     `adb forward --list` (and `ps -A` on the TV for a stray monkey JVM) after a
     capture and remove anything left behind.
   - To capture a first connect without disturbing the real state, point the app at
-    a fresh config dir: `TV_REMOTE_CONFIG_DIR=$(mktemp -d) ./run.sh --auto`. Its
+    a fresh config dir: `ZAPETTE_CONFIG_DIR=$(mktemp -d) ./run.sh --auto`. Its
     key file and per-device record live there, so the app believes the TV is new.
     The yes-path then pairs the TV with THAT key — put the real key back afterwards
     (`node` one-liner over `src/companion.mjs#provisionCompanionSecret` + ping), or
@@ -349,7 +349,7 @@ starts with an HMAC handshake before any verb is read.
   `--ez companion_forget_secret true` to un-pair. Never logged, never echoed.
 - Client: `src/companion.mjs` owns the route now - `adb forward tcp:0 tcp:7900`
   created once per serial, reused by every verb, removed on exit (and on a device
-  switch). Key at `~/.config/tv-remote-tui/companion-<serial>.key`, 32 random
+  switch). Key at `~/.config/zapette/companion-<serial>.key`, 32 random
   bytes, mode 0600, pushed by the client when the TV answers `no_secret` (the
   first-run migration path, retried once).
 - Measured on the TV: LAN connect to `192.168.1.50:7900` is **ECONNREFUSED** (was
@@ -372,7 +372,7 @@ from the keyboard alone (y/Enter, n/Esc). Saying yes walks five visible steps
 (checking adb / preparing the APK / installing / pairing the key / verifying) and
 stops at the first failure; saying no records the refusal and leaves the TV on adb.
 
-- State: `~/.config/tv-remote-tui/device-<key>.json` (`src/device-state.mjs`), keyed
+- State: `~/.config/zapette/device-<key>.json` (`src/device-state.mjs`), keyed
   on the adb serial through the same `deviceKey()` the companion's `companion-<key>.key`
   uses, with the MAC inside the record. Lookup falls back to matching that MAC across
   the records, so a DHCP re-lease does not look like a first connect and does not split
@@ -388,7 +388,7 @@ stops at the first failure; saying no records the refusal and leaves the TV on a
   again).
 - Done = the companion answered an authenticated ping, never "installed". Measured on
   the TV: the whole run 3.3 s (install ~2 s of it), verify 20-22 ms.
-- The APK step uses the prebuilt `dist/tv-companion.apk` while it is newer than the
+- The APK step uses the prebuilt `dist/zapette-companion.apk` while it is newer than the
   companion's `.java`/`.xml`/`.sh` inputs, and only runs `companion/build.sh` when it
   is missing or stale (notes like README.md are NOT inputs - see
   `test/companion-build.test.mjs`).
@@ -399,7 +399,7 @@ stops at the first failure; saying no records the refusal and leaves the TV on a
   route live); fresh dir -> n -> remote usable over adb, and again -> no prompt; the
   real config dir -> no prompt, companion authenticated. `npm test` 55 pass.
 - Installed-but-idle, re-verified after the pre-check change: `am force-stop
-  com.tvremote.companion` (its normal state) with NO record present -> the app started
+  com.zapette.companion` (its normal state) with NO record present -> the app started
   the service, got an authenticated ping, logged "companion already set up on this TV
   (v0.1.0) - recorded for this device, nothing installed" and wrote the record with
   `setup: "found"` - no prompt. Also checked that six consecutive wrong-key connections
@@ -414,7 +414,7 @@ stops at the first failure; saying no records the refusal and leaves the TV on a
   as it was; the record left on this machine is `setup: "found"`, installed+paired,
   v0.1.0, MAC aa:bb:cc:dd:ee:ff.
 - Found and put back during those runs: the TV's `default_input_method` was left as
-  `com.tvremote.companion/.CompanionIme` from an earlier session (a headless IME, so the
+  `com.zapette.companion/.CompanionIme` from an earlier session (a headless IME, so the
   TV had no on-screen keyboard for the physical remote). Restored to
   `com.tcl.inputmethod.international/.T_IME`. Nothing in this flow touches the IME.
 

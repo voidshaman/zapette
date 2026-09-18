@@ -1,4 +1,4 @@
-package com.tvremote.companion;
+package com.zapette.companion;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -16,7 +16,7 @@ import android.util.Log;
  * START_STICKY so the system restarts it if the process is reaped.
  */
 public class CompanionService extends Service {
-    public static final String TAG = "tvcompanion";
+    public static final String TAG = "zapette";
 
     /**
      * 7878 (the port this was designed around) is already listening on the TV:
@@ -28,7 +28,7 @@ public class CompanionService extends Service {
 
     /**
      * Provisioning, over adb and only over adb: the secret rides an intent extra on
-     * `am start-foreground-service -n com.tvremote.companion/.CompanionService
+     * `am start-foreground-service -n com.zapette.companion/.CompanionService
      * --es companion_secret <hex>`, which is already authenticated (RSA + the TV's
      * on-screen confirmation) and never crosses the command socket. It is stored in
      * MODE_PRIVATE SharedPreferences and never logged, notified or echoed in a reply.
@@ -156,7 +156,7 @@ public class CompanionService extends Service {
         if (nm.getNotificationChannel(CHANNEL_ID) == null) {
             NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "Companion",
                     NotificationManager.IMPORTANCE_LOW);
-            ch.setDescription("TV Remote Companion command socket");
+            ch.setDescription("Zapette Companion command socket");
             nm.createNotificationChannel(ch);
         }
     }
@@ -166,7 +166,7 @@ public class CompanionService extends Service {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
-                .setContentTitle("TV Remote Companion")
+                .setContentTitle("Zapette Companion")
                 .setContentText(text)
                 .setOngoing(true)
                 .setContentIntent(pi)

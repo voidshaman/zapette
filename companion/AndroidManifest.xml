@@ -9,7 +9,7 @@
   API 34).
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.tvremote.companion"
+    package="com.zapette.companion"
     android:versionCode="1"
     android:versionName="0.1.0">
 
@@ -26,7 +26,7 @@
     <!-- Lets the app write `settings secure default_input_method` in-process, which is the
          whole of what `ime set` does over adb. Declared because `pm grant` refuses a
          permission the package does not request; granted once over adb
-         (`pm grant com.tvremote.companion android.permission.WRITE_SECURE_SETTINGS`).
+         (`pm grant com.zapette.companion android.permission.WRITE_SECURE_SETTINGS`).
          Without the grant the `ime` verb answers ok:false / no_write_secure_settings and
          the client keeps using the adb path. -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />

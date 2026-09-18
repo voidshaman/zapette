@@ -5,8 +5,8 @@
 // file is named with (src/companion.mjs) — so one decision names both files and
 // they sit side by side:
 //
-//   ~/.config/tv-remote-tui/device-192.168.1.50-5555.json
-//   ~/.config/tv-remote-tui/companion-192.168.1.50-5555.key
+//   ~/.config/zapette/device-192.168.1.50-5555.json
+//   ~/.config/zapette/companion-192.168.1.50-5555.key
 //
 // The serial is not stable forever (it is `ip:5555`, and the TV's address comes
 // from DHCP), so the record also carries the MAC and lookup falls back to
@@ -30,7 +30,7 @@ export const DEVICE_STATE_VERSION = 1
 const PREFIX = "device-"
 const SUFFIX = ".json"
 
-/** `~/.config/tv-remote-tui/device-<key>.json` (TV_REMOTE_CONFIG_DIR honoured). */
+/** `~/.config/zapette/device-<key>.json` (ZAPETTE_CONFIG_DIR honoured). */
 export function deviceStatePath(device) {
   return join(companionConfigDir(), `${PREFIX}${deviceKey(device)}${SUFFIX}`)
 }

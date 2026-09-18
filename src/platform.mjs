@@ -29,7 +29,7 @@ export function stateDir(platform = process.platform, env = process.env, home = 
   const base =
     env.XDG_CONFIG_HOME ||
     (platform === "win32" ? env.APPDATA || join(home, "AppData", "Roaming") : join(home, ".config"))
-  return join(base, "tv-remote-tui")
+  return join(base, "zapette")
 }
 
 /** adb is `adb` everywhere except Windows, where it is `adb.exe`. */

@@ -1,5 +1,8 @@
 TV read path, measured 2026-09-18 on TCL Android_TV (Android 11, API 30), 192.168.1.50:5555
-Companion build: dist/tv-companion.apk sha256 07c7fb7e9fa09bf8534833d8d5da1d3390fed3585baca5078e5a98e694b871f2
+(These logs predate the zapette rename: the paths and package ids below were rewritten to
+dist/zapette-companion.apk and com.zapette.companion, but the recorded sha256 values are of the
+PRE-rename builds and no longer describe the file at that path.)
+Companion build: dist/zapette-companion.apk sha256 07c7fb7e9fa09bf8534833d8d5da1d3390fed3585baca5078e5a98e694b871f2
 Verb: read [cursor|extracted] [before] [after]
 
 == getSurroundingText: THE API DOES NOT EXIST ON THIS DEVICE ==
@@ -64,7 +67,7 @@ uiautomator dump 2610-2719 ms; screencap 1351-2067 ms. -> ~600x cheaper than the
 fresh connection: ping 4.2-19.7 ms; commit 2.9-20.0 ms.
 
 == DEVICE QUIRKS SEEN ==
-TGuard killed the companion mid-run 3x ("Killing 2534:com.tvremote.companion (adj 200): tguard-kill", SmartTube
+TGuard killed the companion mid-run 3x ("Killing 2534:com.zapette.companion (adj 200): tguard-kill", SmartTube
 PSS 177 MB). It restarts (start-requested) and the IME re-binds by itself ("ime created", "ime start input:
 org.smarttube.stable connection=true"), so reads survived; the harness restarts the service on refusal.
 After "adb install -r", the IMM does NOT rebind the companion IME by itself: mCurMethod=null,
@@ -90,7 +93,7 @@ caret parking gone. If it needs to tell "no field focused" from "empty field", u
 
 ==========================================================================
 Streamed test field + target switch, measured 2026-09-18 on the same TV
-Companion build: dist/tv-companion.apk sha256 5a2fb2aa510a94a64963354bbf26e16740c8273d81ec2be77370fd56139e80a8
+Companion build: dist/zapette-companion.apk sha256 5a2fb2aa510a94a64963354bbf26e16740c8273d81ec2be77370fd56139e80a8
 (installed apk sha256 identical, read back from pm path)
 Verbs: field target edittext|streamed ; field get [edittext|streamed]
 Both fields take text through the same commitText path; only the focus differs.
@@ -137,7 +140,7 @@ needed for the measurement itself (3 screencaps used, for the visibility check).
 
 == 6. RESTORE ==
 default_input_method com.tcl.inputmethod.international/.T_IME (was TCL on arrival, restored)
-enabled_input_methods unchanged: TCL : Gboard : com.tvremote.companion/.CompanionIme
+enabled_input_methods unchanged: TCL : Gboard : com.zapette.companion/.CompanionIme
 enabled_accessibility_services com.leanbitlab.ltvL/... (never touched)
 companion process stopped (force-stop) - it was NOT running when this run started
 target left on edittext, both fields cleared, no monkey/experiment processes
@@ -150,7 +153,7 @@ SmartTube's field when testing mirror-mode reads.
 
 ==========================================================================
 Click-by-name + tree read cost, measured 2026-09-18 on the same TV (card t_e8c13ebc)
-Companion build: dist/tv-companion.apk sha256 41506 bytes (CompanionAccess era, verbs tree/find/click/focused)
+Companion build: dist/zapette-companion.apk sha256 41506 bytes (CompanionAccess era, verbs tree/find/click/focused)
 Service state: enabled AND bound (dumpsys accessibility "Bound services" capabilities=1, Crashed services:{}),
 flags 18, canRetrieveWindowContent=true. Host clock, one held socket connection unless said otherwise.
 
@@ -231,7 +234,7 @@ flags 18, canRetrieveWindowContent=true. Host clock, one held socket connection 
 
 == 6. RESTORE
   enabled_accessibility_services left EXACTLY as found (TV's launcher + companion, never overwritten):
-    com.leanbitlab.ltvL/com.leanbitlab.ltvL.LauncherAccessibilityService:com.tvremote.companion/.CompanionAccess
+    com.leanbitlab.ltvL/com.leanbitlab.ltvL.LauncherAccessibilityService:com.zapette.companion/.CompanionAccess
   accessibility_enabled 1 (unchanged); default_input_method com.tcl.inputmethod.international/.T_IME
   (never touched); stay_on_while_plugged_in 7 (unchanged); no monkey process, no adb forward
   (`adb forward --list` empty); SmartTube force-stopped and the launcher back in front; no sleep/power key.
@@ -250,7 +253,7 @@ flags 18, canRetrieveWindowContent=true. Host clock, one held socket connection 
 
 ================================================================================
 2026-09-18  card t_d1658253 - volume get/set + accessibility global actions
-Companion build: dist/tv-companion.apk sha256 93b4909c06db56055e94ddf7d05bea4d43b56b5a049eb766ada87aa9eeba88ae
+Companion build: dist/zapette-companion.apk sha256 93b4909c06db56055e94ddf7d05bea4d43b56b5a049eb766ada87aa9eeba88ae
 New verbs: volume | volume <n> [ui]  and  global <back|home|recents|notifications|quick_settings>
 Host tooling: /tmp/tv-verbs.mjs (socket client with per-command host timing, one held connection),
 /tmp/screen.mjs (compact "what is on screen" digest = focused node + tree node count/packages).
@@ -308,11 +311,11 @@ is confirmation for a human, not a measurement.
 
 == 3. GLOBAL ACTIONS: home and back work; three of the five are silent no-ops
 Method per action: (a) put a non-launcher screen in front - the companion's own TestFieldActivity,
-`am start -n com.tvremote.companion/.TestFieldActivity`, SETUP ONLY, not a test of app launching;
+`am start -n com.zapette.companion/.TestFieldActivity`, SETUP ONLY, not a test of app launching;
 (b) read mCurrentFocus + the whole window list (`dumpsys window windows`) + socket `focused` and
 `tree`; (c) send `global <action>`; (d) read all of it again, plus a screencap pair with sha256.
   home           ok performed:true  TestFieldActivity -> launcher: mCurrentFocus
-                                   com.leanbitlab.ltvL/.MainActivity, tree 8 nodes/com.tvremote.companion
+                                   com.leanbitlab.ltvL/.MainActivity, tree 8 nodes/com.zapette.companion
                                    -> 47 nodes/com.leanbitlab.ltvL, screenshot 32736 -> 214538 bytes.
                                    Reproduced 3/3.
   back           ok performed:true  same shape, 1 back: TestFieldActivity -> launcher MainActivity,
@@ -352,12 +355,12 @@ Latency, host round trip, every run of this session:
   IME         never touched: default_input_method com.tcl.inputmethod.international/.T_IME and the
               enabled list unchanged (TCL + Gboard + companion)
   accessibility  never written: enabled_accessibility_services exactly as found (ltvL launcher +
-              com.tvremote.companion/.CompanionAccess), accessibility_enabled 1
+              com.zapette.companion/.CompanionAccess), accessibility_enabled 1
   other       stay_on_while_plugged_in 7 (unchanged), no monkey, no uiautomator, no `adb forward`,
               launcher back in front, companion process running (pid 3872, running when the card
               started), no sleep/power/reboot key at any point
-  install     `adb install -r dist/tv-companion.apk` + `am start-foreground-service -n
-              com.tvremote.companion/.CompanionService` (the app is re-installed to add the verbs;
+  install     `adb install -r dist/zapette-companion.apk` + `am start-foreground-service -n
+              com.zapette.companion/.CompanionService` (the app is re-installed to add the verbs;
               the WRITE_SECURE_SETTINGS grant survived, and CompanionAccess re-bound by itself -
               `tree` answered bound:true immediately after, no settings were rewritten)
   scratch     host-side only, in /tmp: tv-verbs.mjs, screen.mjs, vol.sh, osd.sh, ga.sh, ga2.sh,

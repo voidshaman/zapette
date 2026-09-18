@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// TV Remote TUI — pilots an Android TV over wireless ADB.
+// Zapette TUI — pilots an Android TV over wireless ADB.
 //
 // Layout: connection header on top, then three columns (VOLUME | D-PAD | TEXT)
 // with a SEND MODE module below the text column. Module titles sit ABOVE their
