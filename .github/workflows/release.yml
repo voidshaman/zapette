@@ -58,6 +58,33 @@ jobs:
       - name: Build the companion APK
         run: ./companion/build.sh
 
+      # scripts/build.mjs logs a failed target and carries on, so a green job can
+      # still be missing a platform (that is how the linux-x64 binary once went
+      # missing). This turns that into a failed release instead of a broken
+      # download for whoever wanted that platform. Note the first name: the
+      # runner's own target builds to the bare `zapette`, so on ubuntu that file
+      # IS the Linux x64 binary and there is no zapette-linux-x64.
+      - name: Every platform must be present
+        run: |
+          set -e
+          missing=0
+          for f in \
+            dist/zapette \
+            dist/zapette-darwin-x64 \
+            dist/zapette-darwin-arm64 \
+            dist/zapette-linux-arm64 \
+            dist/zapette-win32-x64.exe \
+            dist/zapette-win32-arm64.exe \
+            dist/zapette-companion.apk
+          do
+            if [ ! -f "$f" ]; then echo "MISSING: $f"; missing=1; else ls -l "$f"; fi
+          done
+          if [ "$missing" != 0 ]; then
+            echo "::error::a target failed to build - find the '[build] ... failed' line above"
+            exit 1
+          fi
+          echo "all platforms present"
+
       - name: What was produced
         run: ls -lh dist/
 

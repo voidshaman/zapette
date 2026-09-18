@@ -55,7 +55,14 @@ function nativePackages(target) {
 }
 
 function installNative(target) {
-  if (target === platformKey()) return
+  // The host's own node_modules normally satisfies the host target, so this is
+  // skipped - EXCEPT on Linux. There the bundle resolves the musl branch as well
+  // (see nativePackages), `npm ci` installs only the glibc build, and building
+  // linux-x64 on a linux-x64 runner therefore fails with
+  //   error: Could not resolve: "@opentui/core-linux-x64-musl"
+  // which is exactly how a release once shipped without a Linux x64 binary.
+  const { platform } = splitKey(target)
+  if (target === platformKey() && platform !== "linux") return
   const names = nativePackages(target)
   console.log(`[build] installing ${names.join(", ")} for the cross-build`)
   // One command for all of them: a second `npm install --no-save` prunes the
