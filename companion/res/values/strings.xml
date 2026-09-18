@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TV Remote Companion</string>
+    <string name="ime_name">TV Remote Companion</string>
+    <!-- Shown in the TV's accessibility settings list; ASCII, one line. -->
+    <string name="accessibility_description">Reads the on-screen node tree and clicks a named node for the TV Remote app.</string>
+</resources>

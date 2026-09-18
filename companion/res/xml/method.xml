@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The framework only lists an IME that carries this meta-data, and `ime enable` /
+  `ime set` need the entry to exist. One subtype is enough: the service renders no
+  keyboard, so the subtype declares a language, not a layout.
+-->
+<input-method xmlns:android="http://schemas.android.com/apk/res/android">
+    <subtype
+        android:label="@string/ime_name"
+        android:imeSubtypeLocale="fr_FR"
+        android:imeSubtypeMode="keyboard" />
+</input-method>

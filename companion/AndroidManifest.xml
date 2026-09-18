@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Foreground service type: connectedDevice (0x10), added in API 30 and the only
+  type that fits a service whose whole job is talking to an external host over a
+  socket. API 30 declares android:foregroundServiceType on the service; the
+  attribute is optional on 30 (untyped = FOREGROUND_SERVICE_TYPE_NONE is legal)
+  and only became mandatory for targetSdk 34+. connectedDevice needs no extra
+  permission on API 30 (the FOREGROUND_SERVICE_CONNECTED_DEVICE permission is
+  API 34).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.tvremote.companion"
+    android:versionCode="1"
+    android:versionName="0.1.0">
+
+    <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="30" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- The `volume` verb's set path: setStreamVolume on a normal stream. It is a normal
+         (install-time, auto-granted) permission, declared so the platform has nothing to refuse. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- Lets the app write `settings secure default_input_method` in-process, which is the
+         whole of what `ime set` does over adb. Declared because `pm grant` refuses a
+         permission the package does not request; granted once over adb
+         (`pm grant com.tvremote.companion android.permission.WRITE_SECURE_SETTINGS`).
+         Without the grant the `ime` verb answers ok:false / no_write_secure_settings and
+         the client keeps using the adb path. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+
+    <application
+        android:label="@string/app_name"
+        android:allowBackup="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- exported so adb shell can start it: a non-exported service refuses
+             `am start-foreground-service` from uid 2000 (SecurityException). -->
+        <service
+            android:name=".CompanionService"
+            android:exported="true"
+            android:foregroundServiceType="connectedDevice" />
+
+        <!-- The IME half: an InputMethodService that is commanded over the socket and
+             does nothing but commitText. BIND_INPUT_METHOD is what the framework
+             checks before handing this service an InputConnection, so without it
+             `ime set` refuses the component outright. -->
+        <service
+            android:name=".CompanionIme"
+            android:exported="true"
+            android:label="@string/ime_name"
+            android:permission="android.permission.BIND_INPUT_METHOD">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/method" />
+        </service>
+
+        <!-- The test surface the field verbs drive: one EditText the companion owns, so
+             typing is measured against a field this app controls instead of a third-party
+             search box. Exported so adb can also bring it up - API 30 restricts background
+             activity starts. Not in the launcher row: it is a test surface, not a product. -->
+        <activity
+            android:name=".TestFieldActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@android:style/Theme.Black.NoTitleBar" />
+
+        <!-- The accessibility half: reads the active window's node tree and clicks a node by
+             resource-id / text / content-description (the tree, find, click and focused verbs).
+             BIND_ACCESSIBILITY_SERVICE is what the framework checks before binding this, and the
+             meta-data below is what makes it visible to the framework at all - without
+             @xml/accessibility_service the component is enabled in settings and silently never
+             bound. Exported for the same reason the other two services are: the framework (and
+             adb) live outside this uid, and the signature permission is what actually gates
+             access to it. -->
+        <service
+            android:name=".CompanionAccess"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service" />
+        </service>
+
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

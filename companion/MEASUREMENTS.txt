@@ -1,0 +1,369 @@
+TV read path, measured 2026-09-18 on TCL Android_TV (Android 11, API 30), 192.168.1.50:5555
+Companion build: dist/tv-companion.apk sha256 07c7fb7e9fa09bf8534833d8d5da1d3390fed3585baca5078e5a98e694b871f2
+Verb: read [cursor|extracted] [before] [after]
+
+== getSurroundingText: THE API DOES NOT EXIST ON THIS DEVICE ==
+read (default) ->
+  {"ok":false,"cmd":"read","mode":"surrounding","source":"unavailable",
+   "error":"no_such_method: interface: android.view.inputmethod.InputConnection.getSurroundingText [int, int, int]
+            | connection com.android.internal.view.InputConnectionWrapper: ...getSurroundingText [int, int, int]
+            | connection candidates: deleteSurroundingText(int,int); deleteSurroundingTextInCodePoints(int,int);
+              getExtractedText(ExtractedTextRequest,int); getSelectedText(int); getTextAfterCursor(int,int);
+              getTextBeforeCursor(int,int); setSelection(int,int)"}
+corroboration: grep -a -o getSurroundingText /system/framework/framework.jar (27398506 bytes) -> no match.
+So it is not hidden-API-blocked, it is absent from the API-30 framework (arrived with API 31's SurroundingText).
+The build compiles against android-36 (only installed platform), where the sole overload returns
+SurroundingText - a direct call site would have been a NoSuchMethodError on the TV. Reflection +
+verbatim rejection, no fallback.
+
+== 1. REAL TEXT: YES, verbatim, both modes ==
+commit "helloworld"      -> read cursor   @+28.7 ms  text "helloworld"        len 10   verbatim
+                            read extracted @+51.5 ms text "helloworld"        len 10   verbatim
+commit 48 chars          -> read cursor   @+35.2 ms  identical 48 chars
+commit 200 chars         -> cursor 200/200 identical; extracted 200/200 identical, partial -1/-1
+4356+1007 = 5363 chars   -> extracted 5363 chars, verbatim=True;
+                            cursor with before=5000 returned exactly 5000 (the window), verbatim=False
+
+== 2. ANIMATION RACE: the IME read wins; pixel reads never caught a partial ==
+IME read after commit: full string at +28.7 / +35.2 / +35.4 / +11.5 ms (10, 48, 200, 200 chars). No prefix ever.
+Pixels (screencap, 1351-2067 ms per sample; the grab lands early in that window):
+  sc started 0.4 ms BEFORE the commit of 48 chars -> vision: "abcdefghij..." COUNT 48
+  sc started +1665 ms                            -> vision: COUNT 48
+  sc after appending "XY" (10 -> 12 chars)       -> vision: "helloworldXY" COUNT 12 + caret
+  earlier run: sc1 (started +51.6 ms) "helloworld" COUNT 10 + caret
+  NONE showed a partial string. Honest bound: pixels complete within <=1.35 s of the commit; the method's
+  own resolution (1.35 s/sample) cannot resolve the sub-second window.
+Accessible path (mirror mode today): uiautomator dump + node text = 2610-2719 ms, returned 'zqxjkvwm' complete
+(8 chars) and len 200 for the 200-char field. The "hello read back as hell" truncation did NOT reproduce with
+commitText - but the dump samples ~2.7 s after the commit, so this run cannot distinguish "never truncated"
+from "truncated only if sampled sooner".
+
+== 3. EMPTY FIELD: "" - never the hint ==
+focused empty field: cursor -> text "" len 0 sel 0/0 ; extracted -> text "" len 0 sel 0/0 startOffset 0
+partial -1/-1 flags 1. Same after clearing with MOVE_END + DEL burst. "Rechercher" never came back.
+GOTCHA: with NO field focused, cursor still answers ok:true text "" (indistinguishable from empty), while
+extracted answers ok:false error "extracted_text_null".
+
+== 4. CARET: reported, live, exact ==
+200-char field, caret after commit 200/200; MOVE_END + DPAD_LEFT x3 -> 197/197 (both modes);
+DPAD_RIGHT x2 -> 199/199. mCurrentFocus stayed on SearchTagsActivity, so the caret really moved.
+extracted's selection comes from the app's ExtractedText; cursor derives it from the prefix (caretDerived:true).
+
+== 5. LIMITS: window honoured exactly, no silent truncation ==
+200 chars: cursor 200, extracted 200, partialStart/EndOffset -1/-1 (= whole text, not a window).
+1007 chars added to a 4356-char field: cursor before=5000 returned exactly 5000; extracted returned 5363 verbatim.
+before=50 -> exactly 50. The reply has no "truncated" field: len is the truth, and only extracted mode carries
+the partial offsets. (Not re-measured: whether the 5000-char slice was the head or the tail - the field was
+reset before I could re-mark it. By the API's definition it is the text immediately before the caret.)
+
+== 6. LATENCY (host clock at the socket, one connection, min of 5) ==
+read cursor    min 4.5 ms  (6.5, 8.7, 7.9, 4.5, 6.2)
+read extracted min 5.4 ms  (5.4, 16.8, 9.7, 20.1, 13.5)
+read (surrounding, rejection) 10-13 ms
+uiautomator dump 2610-2719 ms; screencap 1351-2067 ms. -> ~600x cheaper than the dump.
+fresh connection: ping 4.2-19.7 ms; commit 2.9-20.0 ms.
+
+== DEVICE QUIRKS SEEN ==
+TGuard killed the companion mid-run 3x ("Killing 2534:com.tvremote.companion (adj 200): tguard-kill", SmartTube
+PSS 177 MB). It restarts (start-requested) and the IME re-binds by itself ("ime created", "ime start input:
+org.smarttube.stable connection=true"), so reads survived; the harness restarts the service on refusal.
+After "adb install -r", the IMM does NOT rebind the companion IME by itself: mCurMethod=null,
+mBoundToMethod=false, every read answers "ime_not_selected" until you switch away and back
+(ime set gboard; ime set companion). Matters for the client's lifecycle code.
+A 260-keyevent DEL burst in one `input keyevent` can exceed a 30 s host timeout (still applies on device).
+
+== 7. RESTORE ==
+default_input_method com.tcl.inputmethod.international/.T_IME (recorded before switching, restored)
+enabled_input_methods TCL + Gboard (companion IME disabled again)
+enabled_accessibility_services com.leanbitlab.ltvL/... (never touched)
+no monkey/other experiment processes; companion socket left running (pid 2394), as found.
+DEVIATION: SmartTube is left on BrowseActivity (home), not on the search screen with an empty field as the
+previous card left it. Clearing a 5363-char field was done with am force-stop, which reset the app's task;
+SearchTagsActivity and SplashActivity both redirect to browse when there is no live search state and DPAD
+navigation did not re-focus the bar. No text is left in the app.
+
+== VERDICT ==
+Mirror mode CAN move its field reads onto the IME - via `read extracted` (or `read cursor`), not via
+getSurroundingText, which does not exist on Android 11. 2.5 s dump -> 5 ms read, hint special-case gone,
+caret parking gone. If it needs to tell "no field focused" from "empty field", use extracted mode
+(cursor mode cannot), and its lifecycle code must keep the companion IME selected.
+
+==========================================================================
+Streamed test field + target switch, measured 2026-09-18 on the same TV
+Companion build: dist/tv-companion.apk sha256 5a2fb2aa510a94a64963354bbf26e16740c8273d81ec2be77370fd56139e80a8
+(installed apk sha256 identical, read back from pm path)
+Verbs: field target edittext|streamed ; field get [edittext|streamed]
+Both fields take text through the same commitText path; only the focus differs.
+
+== WHAT THE INSTRUMENT DOES ==
+The streamed field (StreamingEditText) paints its text one character per 25 ms tick and presents the
+placeholder "Rechercher" while empty. Its replies carry content / rendered / settled / render_ms / hint.
+The plain field's reply keys are unchanged (cmd, verb, ok, text, len, selectionStart, selectionEnd,
+focused).
+
+== 1. PREFIX AFTER A COMMIT: REPRODUCED ==
+field set <text> and field get streamed written in ONE socket write (device sees the read ~0 ms later):
+  "hello"      x5 : rendered "" at +6..+17 ms, content "hello", settled false
+  "helloworld" x5 : rendered "" at +6..+17 ms, content "helloworld", settled false
+Mid-reveal reads (same field, polled): "", "h", "he", "hel", "hell" before "hello" - a strict prefix of
+the committed string, which is the "hello reads back as hell" fault reproduced on the harness.
+
+== 2. RENDER LAG (commit -> fully painted) ==
+  "hello"      device render_ms 125,125,127,128,129 ; wall clock 124,134,185,136,135 ms
+  "helloworld" device render_ms 251,251,253,253,253 ; wall clock 256,248,250,249,338 ms
+  "a..Z" 40 ch device render_ms 1031 ms
+  => ~25 ms per character, device clock; the wall clock adds only the read round trip (~5-20 ms).
+PIXELS agree, not just the read: a screencap started straight after a 40-char commit caught
+"abcdefghijkl" (12 of 40) on screen (vision read, monospace, 1920x1080) while the logical text was 40.
+
+== 3. EMPTY FIELD ==
+  streamed: content "" | rendered "Rechercher" | hint "Rechercher" | settled true
+            on pixels the lower field shows a grey "Rechercher" (vision), upper field unaffected
+  edittext: text "" len 0 - no rendered/settled/hint keys at all, nothing on screen
+
+== 4. THE PLAIN FIELD, SAME PATH, FOR CONTRAST ==
+  "hello" / "helloworld" x5 : first read at +8..+17 ms returns the FULL string, settled key absent,
+  render_ms absent - no lag to measure. Empty: text "" len 0.
+
+== 5. BOTH FIELDS ON SCREEN ==
+screencap + vision (tools/ask-vision.py with a purpose-written two-field prompt): upper field
+"plaintext-LABEL-1" (17 chars), lower "helloworld" (10 chars), both fully inside the frame, and the
+socket reads agreed character for character.
+
+== LATENCY / COST ==
+field target streamed 21-28 ms round trip (waited_ms 21; the verb waits for the new field to take focus -
+25 ms poll, 20 ms observed). field get streamed 4-17 ms. field clear 4-8 ms. 0 keystrokes, 0 screencaps
+needed for the measurement itself (3 screencaps used, for the visibility check).
+
+== 6. RESTORE ==
+default_input_method com.tcl.inputmethod.international/.T_IME (was TCL on arrival, restored)
+enabled_input_methods unchanged: TCL : Gboard : com.tvremote.companion/.CompanionIme
+enabled_accessibility_services com.leanbitlab.ltvL/... (never touched)
+companion process stopped (force-stop) - it was NOT running when this run started
+target left on edittext, both fields cleared, no monkey/experiment processes
+
+== VERDICT ==
+The harness reproduces BOTH faults mirror mode compensates for - a post-commit read returns a prefix
+(measured: "" / "hell" at +100 ms of a 125 ms reveal) and an empty field reports "Rechercher" as its
+rendered value - while the plain field commits the same strings with no lag at all. It can stand in for
+SmartTube's field when testing mirror-mode reads.
+
+==========================================================================
+Click-by-name + tree read cost, measured 2026-09-18 on the same TV (card t_e8c13ebc)
+Companion build: dist/tv-companion.apk sha256 41506 bytes (CompanionAccess era, verbs tree/find/click/focused)
+Service state: enabled AND bound (dumpsys accessibility "Bound services" capabilities=1, Crashed services:{}),
+flags 18, canRetrieveWindowContent=true. Host clock, one held socket connection unless said otherwise.
+
+== 1. CLICK BY SELECTOR: yes, and it is the one thing nothing else can do
+  id   click org.smarttube.stable:id/title_orb        id_exact  climbed 0 performed true  dev 26-33 ms
+       on BrowseActivity -> the NEXT reads (see 3) show the search screen: find lb_search_text_editor
+       0 -> 1 match, the focused editable StreamingTextView with that id, bounds [416,89,1544,138];
+       mCurrentFocus BrowseActivity -> SearchTagsActivity. 5 further clicks on the field id: performed true, 20.6-39.1 ms.
+  desc click "Commande de recherche"                  desc_exact climbed 1 performed true  dev 28 ms
+       from BrowseActivity -> same effect (SearchTagsActivity, field 0 -> 1 match): the ImageView that
+       carries the desc is not clickable, its parent orb is.
+  text click "Rechercher" (the search field's own hint)
+                                                      text_exact climbed 0 performed true  dev 27 ms
+       after moving focus to search_settings_orb with DPAD_RIGHT -> focus came back to the field
+       (id lb_search_text_editor, editable true). A real effect, verified by read-back.
+  FAILURES, reported as failures:
+    text on a settings row: click "Réseau et Internet" (android:id/title TextView)
+       text_exact climbed 2 performed TRUE -> the screen did NOT change: the tree before and after are
+       byte-identical and the focused row is unchanged. ok:true + performed:true is NOT proof of effect.
+    text with no clickable ancestor: click "PARAMÈTRES GÉNÉRAUX" -> click_rejected (climbed 6, performed false).
+    duplicate id: click android:id/title (one id on every row's label) -> click_rejected, matched the label.
+    launcher tile: click "TV Apps" (desc_exact on com.leanbitlab.ltvL) -> click_rejected, climbed 6:
+       the TCL launcher names its tiles on a NON-clickable view and puts the click on a CHILD, and the
+       climb only goes UP. So on the launcher no name works: ids are "" everywhere.
+  selector types that resolve on this TV: SmartTube = full ids on clickable nodes + desc on the inner
+  icon (climb 1) + text on the field; launcher = desc/text only, and neither can be clicked;
+  com.android.tv.settings = android:id/title duplicated on every row label, text resolves.
+  LATENCY (min of 5, host round trip): find 10.7 ms (10.7 11.7 12.8 13.5 28.2) / click 20.6 ms
+  (39.1 21.2 33.7 20.6 23.3); focused 3-12 ms; device-side ms 5-33.
+
+== 2. TREE READ COST: 14-17 ms against the dump's 2.5 s
+  launcher screen, 47 nodes, depth 12, truncated=false, 35 focusable / 11 clickable:
+    7 sequential runs host ms : 47.5 26.2 15.9 16.8 33.0 16.8 14.2   -> min 14.2 median 16.8
+    10 back to back host ms   : 16.0 14.6 22.7 16.5 14.1 14.6 14.8 15.3 14.6 26.8 -> min 14.1 median 15.4
+    device-side ms of the walk: 12 (first) then 4-5; all 27 reads identical content, nothing truncated
+    10 pipelined in ONE socket write: all 10 answered, 151 ms total (~15 ms each)
+  other screens: SmartTube browse 35 nodes depth 12 (35.5 ms host / 23 ms dev), its search screen
+  28 nodes (29 ms / 7 ms), com.android.tv.settings 77 nodes depth 15 (67.3 ms / 26 ms).
+  uiautomator dump, same launcher screen, same session: 2604 ms (2507/2516 ms in 2 more runs).
+  => the tree is ~150x cheaper, and it is the only path that yields a NODE to click.
+  No throttling, no caching, no refusal seen: 10 back-to-back and 10 pipelined calls all answered.
+
+== 3. FRESHNESS: live, not cached
+  D-pad press = `input keyevent` on the host (1.28-1.35 s per call, the key is injected ~0.45 s in),
+  `focused` polled every 9-15 ms over the same connection. Every press produced ONE step to the new
+  node, first visible at the next read (e.g. key at ~0.45 s -> new value at t=860.7 ms with 10.4 ms
+  spacing; another round: 831.3 ms with 9.2 ms spacing), and the intermediate samples were the
+  launcher's own focus ANIMATION frames (bounds sliding 780->779->777 and 1143->1122->1058->960->862->798->777).
+  A cached tree cannot show animation frames, so each call reads live.
+  Device-side action then read: click the orb (dev 26 ms) -> the reads at ~25 ms spacing still showed the
+  old focused node (SmartTube's error_frame) at +25 ms and the search field at +54 ms, while mCurrentFocus
+  switched in the same window: the observable lag is the app's own activity transition, not the read.
+  Caveat that matters more: while a monkey JVM is resident the service is UNBOUND (see 5), so reads then
+  return accessibility_not_bound - a refusal, never stale data.
+
+== 4. TREE vs DUMP, same launcher screen, side by side
+  nodes 47 = 47; focusable 35 = 35; clickable 11 = 11; non-empty resource-ids: both only android:id/content;
+  focused nodes: both report exactly two - FrameLayout [0,0,1920,1080] and View "This category is empty." [48,536,439,756].
+  They AGREE here. Differences that decide it: dump 2604 ms vs tree 17.2 ms; the dump needs no enabled
+  service and prints the tree as XML on /sdcard, the tree needs CompanionAccess bound (which any UiAutomation
+  client displaces) and returns the same facts as JSON over the socket. Trust the tree when the service is
+  bound; keep the dump as the fallback for when it is not.
+  Dump reliability: rc=0 (2507/2516/2604 ms, xml 15290 bytes) in every run with nothing else resident;
+  NEVER rc=137 in normal use this session, but with a monkey JVM resident 3/3 dumps died at ~825 ms with
+  rc=137 and no XML, and the same dump went back to rc=0 the moment monkey stopped.
+
+== 5. THE TWO TRANSPORTS CANNOT RUN TOGETHER (found while trying to measure staleness)
+  Anything holding a UiAutomation connection displaces CompanionAccess on this TV:
+    monkey network-mode JVM resident -> "accessibility unbound" within ~0.5 s, 0/5, 0/16, 0/4 and 0/4
+      reads bound across four separate runs (same companion pid alive and answering ping the whole time);
+      the moment monkey stops: "accessibility connected", bound 4/4, 3/3, 3/3 - reproduced 3x.
+    uiautomator dump -> unbind then reconnect 1.16 s later (logcat 06:13:50.675 unbound / 06:13:51.830 connected).
+    `input keyevent` (one-shot app_process, and the D-pad path used above) -> NO unbind, 4/4 bound.
+    Excluded as causes: a bare `adb forward` (4/4 bound) and a resident `adb shell sleep 300` (4/4 bound).
+  Mechanism is inferred (UiAutomation contention, not proven); the binding behaviour is measured.
+  Consequence for the client: reading the tree with monkey up is impossible; stopping monkey rebinds the
+  service within <=1.2 s (measured: bound again on the first check after 1.2 s).
+
+== 6. RESTORE
+  enabled_accessibility_services left EXACTLY as found (TV's launcher + companion, never overwritten):
+    com.leanbitlab.ltvL/com.leanbitlab.ltvL.LauncherAccessibilityService:com.tvremote.companion/.CompanionAccess
+  accessibility_enabled 1 (unchanged); default_input_method com.tcl.inputmethod.international/.T_IME
+  (never touched); stay_on_while_plugged_in 7 (unchanged); no monkey process, no adb forward
+  (`adb forward --list` empty); SmartTube force-stopped and the launcher back in front; no sleep/power key.
+  Leftovers: /sdcard/acc-dump.xml, acc-mech.xml, acc-mon0..2.xml (this card's dumps, alongside the
+  previous cards' s2..s9/t1..t3/ui*.xml). The companion process was running when this card started and is
+  still running (pid 3880) - as found.
+
+== 7. VERDICT - what the accessibility service still EARNS
+  Named clicks: yes, exclusively - monkey presses keys and taps coordinates, only ACTION_CLICK reaches a
+  node you can name, and it works by resource-id (SmartTube) and content-description (SmartTube) but NOT
+  on a TCL launcher tile and NOT reliably through text (a settings row accepted the click and did nothing).
+  The tree read: 14-17 ms vs 2.5 s (~150x) and the only way to FIND the node, but it is not a free
+  replacement everywhere - it needs the service bound, and the two things that would coexist with it
+  (monkey's key transport, uiautomator's own dump) are exactly the things that unbind it. Honest summary:
+  named clicks plus a fast tree read, at the price of competing with monkey for the accessibility slot.
+
+================================================================================
+2026-09-18  card t_d1658253 - volume get/set + accessibility global actions
+Companion build: dist/tv-companion.apk sha256 93b4909c06db56055e94ddf7d05bea4d43b56b5a049eb766ada87aa9eeba88ae
+New verbs: volume | volume <n> [ui]  and  global <back|home|recents|notifications|quick_settings>
+Host tooling: /tmp/tv-verbs.mjs (socket client with per-command host timing, one held connection),
+/tmp/screen.mjs (compact "what is on screen" digest = focused node + tree node count/packages).
+
+== 1. VOLUME: which stream, the read-back, the latency
+Stream = STREAM_MUSIC (id 3). Why: it is the stream this TV's own volume keys move. Measured, one
+keyevent each way, all 12 streams read before/after:
+  before           MUSIC 21; SYSTEM 24; TTS/ACCESSIBILITY/ASSISTANT 24; RING/VOICE_CALL/ALARM/
+                   NOTIFICATION/SYSTEM_ENFORCED 2; BLUETOOTH_SCO 7; DTMF 4
+  VOLUME_UP (24)   MUSIC 22, every other stream unchanged
+  VOLUME_DOWN (25) MUSIC 21, back to the value found
+=> "the TV's volume" is STREAM_MUSIC's index on a 0-100 scale, one step per key.
+
+Set then read back, with an independent witness (dumpsys audio = the system's own view, read after
+each verb, not our reply):
+  volume 21  -> level 21  matched true clamped false before 100 | dumpsys 21, Muted:false
+  volume 45  -> level 45  matched true                         | dumpsys 45
+  volume 0   -> level 0   matched true, muted TRUE             | dumpsys 0, Muted:true
+  volume 100 -> level 100 matched true, muted false            | dumpsys 100, Muted:false
+  volume 999 -> level 100 clamped true matched true (clamp is ours, reported as `clamped`)
+4/4 exact, 4/4 agreeing with dumpsys. `level` is read back from the AudioManager AFTER the write.
+Mute: 0 is a mute on this TV (setting 0 -> muted:true, setting 100 -> muted:false). A mute applied
+from somewhere else was NOT tested - do not claim either way.
+
+Latency, one held connection, host round trip (min of 5):
+  volume read  12.31 8.42 6.52 5.38 12.19 6.00 -> MIN 5.38 ms   (device-side ms 2 in every run)
+  volume set   15.29 13.30 16.18 19.75 15.90    -> MIN 13.30 ms  (device-side 10-16 ms)
+Set is ~2.5x a read: setStreamVolume plus the read-back are two calls and the HAL does real work.
+Writing 0 or 100 is dearer device-side (52 ms / 44 ms) than a mid level (10-16 ms).
+First `volume` in a FRESH process: 152.70 ms host / 2 ms device - one-off class loading + the
+first AudioManager fetch, then 4-6 ms. It is not a network or socket cost (ping on the same fresh
+connection was 7.86 ms).
+
+== 2. THE TV'S VOLUME OSD: only when the caller asks for it
+Witness: `adb exec-out screencap -p` (1.5-1.7 s per sample, 1920x1080 PNG; the grab lands early in
+that window) + sha256 + PIL bounding-box diff + tools/ask-vision.py with tools/prompts/tv-volume.txt.
+  baseline, launcher, no volume change in flight     -> vision: NO volume indicator anywhere
+  control, one VOLUME_UP keyevent                    -> the TCL OSD: thin VERTICAL slider at the
+    far right edge with a speaker glyph, NO digits in it (vision YES; pixel diff vs baseline bbox
+    x 1750-1838, y 340-714)
+  volume 30 (no flag)   -> screencap BYTE-IDENTICAL to the baseline frame
+    (sha 9e06d0cda6ec5325145ec232c4058173472f4f5adca7cd98bf9ac3ff2e6d2b21, diff bbox None, vision NO)
+  volume 35 (no flag)   -> diff vs baseline = the clock only (bbox 1800,43,1825,69), vision NO
+  volume 40 ui (35->40) -> OSD present (vision YES; diff bbox x 1750-1838 y 43-714)
+  volume 45 ui (40->45) -> OSD present (vision YES)
+  volume 40 ui (45->40) -> OSD present (vision YES)
+  volume 40 ui (40->40, no change) -> NOTHING drawn (vision NO; diff bbox = the clock only)
+=> the OSD follows the LEVEL CHANGING, not the call: 3/3 real changes drew it, 1/1 no-op re-set
+drew nothing, and 2/2 writes with no flag drew nothing at all (one of them hash-for-hash). Two
+samples of the same level taken minutes apart matched to within the clock pixels; 40 vs 45 differed
+in a 22 px wide band on the right edge (x 1789-1811, y 374-561), i.e. the slider track - consistent
+with the handle moving with the level, but the panel animates in and a grab can land on a different
+fade frame, so a pixel diff is NOT a way to read the level back. The OSD shows no number at all: it
+is confirmation for a human, not a measurement.
+
+== 3. GLOBAL ACTIONS: home and back work; three of the five are silent no-ops
+Method per action: (a) put a non-launcher screen in front - the companion's own TestFieldActivity,
+`am start -n com.tvremote.companion/.TestFieldActivity`, SETUP ONLY, not a test of app launching;
+(b) read mCurrentFocus + the whole window list (`dumpsys window windows`) + socket `focused` and
+`tree`; (c) send `global <action>`; (d) read all of it again, plus a screencap pair with sha256.
+  home           ok performed:true  TestFieldActivity -> launcher: mCurrentFocus
+                                   com.leanbitlab.ltvL/.MainActivity, tree 8 nodes/com.tvremote.companion
+                                   -> 47 nodes/com.leanbitlab.ltvL, screenshot 32736 -> 214538 bytes.
+                                   Reproduced 3/3.
+  back           ok performed:true  same shape, 1 back: TestFieldActivity -> launcher MainActivity,
+                                   mCurrentFocus + tree 8 -> 47 + screenshot 32736 -> 214538 bytes.
+    CAVEAT, measured: the first back while the soft keyboard is up is eaten by the KEYBOARD. Before:
+    AZERTY keyboard over the test field (vision YES; 72407 bytes). After that back: keyboard gone,
+    activity STILL in front (vision of the after frame, mCurrentFocus unchanged, tree unchanged,
+    32736 bytes). The NEXT back then finished the activity (see the run above). `input keyevent 4`
+    behaves the same way, so this is the platform's back, not a quirk of the verb.
+  recents        ok performed:true  NOTHING. mCurrentFocus unchanged (TestFieldActivity), window list
+                                   identical, tree identical (8 nodes), screencap byte-identical
+                                   before/after (sha 93f1987bfae64f13e95e4dde05d512d2b28e5929231886cbe8d40668166b86ac).
+  notifications  ok performed:true  NOTHING. Byte-identical screencaps from BOTH foregrounds:
+                                   companion activity sha 08461ff33bf5da723bc449db5262a7cb6b64ff763b5c05cf725efad69ce7ec69,
+                                   launcher sha 5e0d7919bde4a9659d57ad93fd843462e2d2c372378216027926610ff292867c;
+                                   focus/window list/tree unchanged in both.
+  quick_settings ok performed:true  NOTHING, same evidence in both foregrounds (launcher sha 5e0d7919bde4...).
+=> `performed:true` reports that the action was DISPATCHED to the platform. Three of these five
+answer performed:true and change not one pixel. Android TV 11 has no recents screen; the vendor's
+notification panel and quick-settings panel are not reachable through performGlobalAction here.
+Foreground dependence seen: back needs a foreground app with a back stack (no-op on the launcher)
+and a raised keyboard steals the first press; home only moves anything when something else is in
+front; recents/notifications/quick_settings behaved identically from the companion activity and
+from the launcher.
+Latency, host round trip, every run of this session:
+  home           min 4.49 over 5  (5.84 6.65 13.86 4.49 13.63)
+  back           min 6.60 over 6  (6.99 24.28 8.53 7.35 10.36 6.60)
+  quick_settings min 3.72 over 5  (6.95 13.24 5.54 3.72 5.78)
+  notifications  min 3.63 over 4  (5.90 5.52 3.63 9.14)
+  recents        min 5.41 over 3  (8.81 5.41 8.62)
+  device-side 0-4 ms in all of them. Outliers are the socket/lock wait, not the action: 122.44 ms
+  host for one `global recents` and 24.28 ms for one `global back`, both device-side 1-4 ms.
+
+== 4. RESTORE / LEFT AS FOUND
+  volume      STREAM_MUSIC set back to 21, the value found at the start (`volume 21`, then
+              `dumpsys audio` -> streamVolume:21, Muted:false)
+  IME         never touched: default_input_method com.tcl.inputmethod.international/.T_IME and the
+              enabled list unchanged (TCL + Gboard + companion)
+  accessibility  never written: enabled_accessibility_services exactly as found (ltvL launcher +
+              com.tvremote.companion/.CompanionAccess), accessibility_enabled 1
+  other       stay_on_while_plugged_in 7 (unchanged), no monkey, no uiautomator, no `adb forward`,
+              launcher back in front, companion process running (pid 3872, running when the card
+              started), no sleep/power/reboot key at any point
+  install     `adb install -r dist/tv-companion.apk` + `am start-foreground-service -n
+              com.tvremote.companion/.CompanionService` (the app is re-installed to add the verbs;
+              the WRITE_SECURE_SETTINGS grant survived, and CompanionAccess re-bound by itself -
+              `tree` answered bound:true immediately after, no settings were rewritten)
+  scratch     host-side only, in /tmp: tv-verbs.mjs, screen.mjs, vol.sh, osd.sh, ga.sh, ga2.sh,
+              back.sh, diff.py, diff2.py, prompt-keyboard.txt and the osd-*/ga-*/back-*.png frames.
+              In-repo, the only additions are the two Java changes, the manifest permission and
+              tools/prompts/tv-volume.txt.
+  round trips ~55 adb invocations (mostly 0.08-0.2 s reads; the 14 screencaps at ~1.6 s each are
+              most of the wall clock) and ~85 socket verbs.
+

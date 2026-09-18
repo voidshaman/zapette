@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The accessibility service's configuration, referenced from the manifest by
+  meta-data android.accessibilityservice / @xml/accessibility_service.
+
+  This file is NOT optional decoration: a service declared with
+  BIND_ACCESSIBILITY_SERVICE but without this meta-data is never bound by the
+  framework, and nothing reports an error - `settings get secure
+  enabled_accessibility_services` still lists the component, so the only symptom is
+  that every tree/find/click verb answers as if no window existed.
+
+  accessibilityEventTypes: typeWindowStateChanged only. Nothing in the service reacts
+  to an event (the verbs are polled over the socket, on demand), but an event type is
+  what makes the framework bind us to a window at all. Asking for content-changed
+  events would put every scroll and every text repaint through this process on a 2 GB
+  TV for no gain.
+
+  notificationTimeout 1000 -> at most one event per second, for the same reason.
+
+  accessibilityFlags: the set CompanionAccess.FLAGS documents - flagReportViewIds
+  (0x10, without it getViewIdResourceName() returns null for every node) and
+  flagIncludeNotImportantViews (0x2, keeps views the app marked not important for
+  accessibility in the tree; TV apps flag decorative/transitional views that way and a
+  container that is not important can still hold the ones that are). Deliberately NOT
+  flagRequestFilterKeyEvents (0x20): that would take keys away from the TV's own
+  remote.
+
+  accessibilityFeedbackType: feedbackGeneric. The service delivers no spoken, audible
+  or haptic feedback, but the attribute is required - a service without a feedback type
+  cannot be enabled.
+
+  canRetrieveWindowContent="true" is the capability the whole feature rests on: without
+  it getRootInActiveWindow() returns null.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagIncludeNotImportantViews"
+    android:canRetrieveWindowContent="true"
+    android:notificationTimeout="1000"
+    android:description="@string/accessibility_description" />
