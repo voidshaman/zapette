@@ -11,7 +11,7 @@ Keys answer in **2.7 ms** instead of 1238 ms.
 [![companion-apk](https://github.com/voidshaman/zapette/actions/workflows/companion-apk.yml/badge.svg)](https://github.com/voidshaman/zapette/actions/workflows/companion-apk.yml)
 [![licence: GPL-3.0-only](https://img.shields.io/badge/licence-GPL--3.0--only-blue)](LICENSE)
 
-[Features](#features) · [Install](#install) · [Usage](#usage) · [Why it is fast](#why-it-is-fast) · [FAQ](#faq) · [Docs](#docs)
+[Install](#install) · [Usage](#usage) · [Features](#features) · [Why it is fast](#why-it-is-fast) · [FAQ](#faq) · [Docs](#docs)
 
 </div>
 
@@ -50,30 +50,8 @@ Keys answer in **2.7 ms** instead of 1238 ms.
   ↑ ↓ change the TV volume      ← → switch module      − + also work        last sent: —
 ```
 
-<sub>Real output of `./run.sh --demo`, which drives the whole UI offline — volume meter, D-pad, text
-entry with three send modes, and a log of every key with its latency. Every number in this README was
-measured on a real set, not estimated.</sub>
-
-## Features
-
-- **Type on the TV with a real keyboard.** The box mirrors whatever field the TV has focused — edit
-  here and the change lands there. No more arrow-keying around an on-screen keyboard.
-- **Three send modes for picky apps.** Mirror the TV's field live, compose a block and send it with
-  Enter, or type key-by-key — whatever the app in front of you accepts.
-- **Foreign layouts handled for you.** Reads the TV's own keyboard layout on connect, so an AZERTY
-  set no longer turns your `q` into an `a`.
-- **Every key a remote has.** D-pad, OK, Back, Home, volume, power — each answering in milliseconds,
-  with the latency logged next to it.
-- **App launcher and task manager.** See what the TV can launch and what is running, start or stop
-  apps, and install APKs straight from this machine.
-- **Power control.** Wake the TV over the network, send it to sleep, or toggle it — the button shows
-  the state it read from the set, not the state it hopes for.
-- **A mouse cursor for the TV.** Hand your machine's mouse to a pointer on the TV for the rare app
-  that wants taps.
-- **Works with nothing installed on the TV.** Everything above runs over plain adb. The optional
-  companion app exists only to make it faster — and it answers to this machine alone.
-- **Runs anywhere.** macOS, Linux and Windows, x64 and arm64; the release binary carries its own
-  adb, so there is nothing else to install.
+<sub>Real output of `./run.sh --demo`, which drives the whole UI offline. Every number in this README
+was measured on a real set, not estimated.</sub>
 
 ## Install
 
@@ -130,6 +108,26 @@ you out.
 
 </details>
 
+## Features
+
+- **Type into the TV's own field.** No on-screen keyboard: the box mirrors whatever the TV has focused,
+  you edit it here, and the change is pushed back.
+- **Keys in single-digit milliseconds.** D-pad, Back, Home, Enter and volume ride a warm `monkey`
+  socket instead of spawning a JVM per key — about **460× faster** than `adb shell input keyevent`.
+- **A fallback under every fast path.** The plain adb route stays byte-identical and the route is
+  chosen in one place, so a TV with neither the companion app nor monkey still works.
+- **Optional companion APK.** A small app on the TV answers text and keys over a socket bound to its
+  **loopback**, behind a per-device HMAC secret provisioned over adb. Nothing on the LAN can reach it.
+- **First-connect setup.** The first time it meets a TV it asks before touching it, then installs and
+  pairs the companion in five visible steps. Declining leaves the adb path intact.
+- **App launcher and task manager.** `l` shows what the TV can launch and what is running; `k` stops a
+  package and reports what actually happened rather than what the command said.
+- **APK installer.** `i` walks this machine's filesystem inside the TUI and installs through the
+  device's own verdict, not adb's exit code.
+- **Cursor mode.** `m` gives the TV a pointer driven by your mouse; taps land, and the position is
+  shown in the footer because TV apps draw no cursor for injected motion.
+- **Cross-platform.** macOS, Linux and Windows on x64 and arm64; a compiled binary embeds its own adb.
+
 ## Why it is fast
 
 | path | cost |
@@ -144,9 +142,6 @@ Plain `adb shell input` starts a JVM on the TV for every call, which is why a na
 typing through mud. Two things avoid it: a long-lived `monkey` socket for keys, and the companion's own
 IME for text, which commits a whole string in one call. Both are additive — pull either away and the
 app degrades to plain adb instead of breaking.
-
-<sub>Every number above was measured on a real set, not estimated — the raw runs are in
-[HANDOFF.md](HANDOFF.md).</sub>
 
 ## FAQ
 
@@ -197,15 +192,6 @@ TV's settings first), and `w` does that for you.
 | [docs/apps.md](docs/apps.md) | app list, task manager, APK installer, device history |
 | [docs/build.md](docs/build.md) | standalone binaries, cross-building, per-platform notes |
 | [HANDOFF.md](HANDOFF.md) | working state and the raw measurements |
-
-## Built on
-
-- [OpenTUI](https://github.com/sst/opentui) — the terminal UI framework behind every panel on screen,
-  and the project's only npm dependency.
-- [Android platform-tools](https://developer.android.com/tools/releases/platform-tools) — `adb` does
-  all the talking to the TV; the release binaries vendor it unmodified (Apache-2.0).
-- [Bun](https://bun.sh) — compiles the standalone executables.
-- [Node.js](https://nodejs.org) — the runtime when running from source.
 
 ## Licence
 
