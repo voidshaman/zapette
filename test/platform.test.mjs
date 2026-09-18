@@ -56,6 +56,7 @@ test("platform-tools downloads exist only where Google publishes them", () => {
 
 test("MAC normalisation handles short first octets and dashes", () => {
   assert.equal(normalizeMac("aa:bb:cc:dd:ee:ff"), "aa:bb:cc:dd:ee:ff")
+  assert.equal(normalizeMac("a:bb:cc:dd:ee:ff"), "0a:bb:cc:dd:ee:ff", "a one-digit first octet is padded")
   assert.equal(normalizeMac("AA-BB-CC-DD-EE-FF"), "aa:bb:cc:dd:ee:ff")
   assert.equal(parseMac("? (192.168.1.50) at aa:bb:cc:dd:ee:ff on en0 ifscope"), "aa:bb:cc:dd:ee:ff")
 })
