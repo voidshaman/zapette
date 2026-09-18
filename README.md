@@ -1,4 +1,7 @@
-# tv-remote-tui
+# zapette
+
+[![test](https://github.com/voidshaman/zapette/actions/workflows/test.yml/badge.svg)](https://github.com/voidshaman/zapette/actions/workflows/test.yml)
+[![companion-apk](https://github.com/voidshaman/zapette/actions/workflows/companion-apk.yml/badge.svg)](https://github.com/voidshaman/zapette/actions/workflows/companion-apk.yml)
 
 A terminal remote for an Android TV, driven over wireless ADB. Pick a device, then use one screen to
 run it: D-pad, volume, text entry, power, and the apps installed on the TV.

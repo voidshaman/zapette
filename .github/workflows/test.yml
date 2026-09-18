@@ -1,0 +1,38 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The README requires Node 26.4+, so CI tests the version we ship
+        # against rather than a lower bound we do not support.
+        node: ["26.x"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Parse check (every module must at least compile)
+        run: |
+          set -e
+          for f in run.mjs src/*.mjs tools/*.mjs scripts/*.mjs test/*.test.mjs; do
+            node --check "$f"
+          done
+          echo "all modules parse clean"
+
+      - name: Test
+        run: npm test

@@ -1,0 +1,47 @@
+name: companion-apk
+
+# The companion is a separate Android artefact with a separate toolchain, so it
+# gets its own workflow. It only runs when something it is built from changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "companion/**"
+      - ".github/workflows/companion-apk.yml"
+  pull_request:
+    paths:
+      - "companion/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # GitHub's ubuntu runners already carry the Android SDK (ANDROID_HOME),
+      # and build.sh locates build-tools through it. It also generates its own
+      # signing keystore when none exists, so nothing secret is needed here.
+      - name: Build the APK
+        run: |
+          set -e
+          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
+          ./companion/build.sh
+          ls -l dist/tv-companion.apk
+
+      - name: Verify the signature (an unsigned APK would install nowhere)
+        run: |
+          set -e
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)"
+          "$BT/apksigner" verify --print-certs dist/tv-companion.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tv-companion-apk
+          path: dist/tv-companion.apk
+          if-no-files-found: error
