@@ -1,0 +1,13 @@
+Transcribe the string rendered in this Android TV search field EXACTLY as displayed.
+
+Rules:
+- Preserve order, case, every repeated character, and punctuation. Do not normalize, autocorrect,
+  translate or "fix" anything.
+- Do NOT infer what the text was probably meant to be. If the field shows a mangled string, report
+  the mangled string - that is the measurement.
+- If the field is empty, or shows placeholder/hint text instead of content, say so explicitly and
+  quote whatever is rendered.
+- Then give the character count of the transcribed string.
+- Then list any characters you are unsure about, and say why.
+
+Answer in this order: TRANSCRIPTION, COUNT, UNCERTAIN CHARACTERS.

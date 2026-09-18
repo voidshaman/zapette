@@ -1,0 +1,15 @@
+This is a screenshot of a TCL Android TV (Android 11), in French. The question is whether a VOLUME
+overlay is on screen right now.
+
+Report, in this order:
+1. Is there any volume indicator visible? Look for a horizontal or vertical bar, a percentage or a
+   number, a speaker/mute icon, or a semi-transparent panel that usually sits at the bottom or top of
+   the screen. Answer YES or NO first.
+2. If YES: quote every number, unit or label you can read in it, say where on the screen it sits
+   (bottom left / bottom center / top right ...) and whether it looks like a small overlay panel or a
+   full-screen page.
+3. What is on the rest of the screen - name the app/screen you think is showing (e.g. a TV launcher
+   with app tiles, a settings page, a video player) and say if anything else is drawn on top of it.
+4. Any other text visible, verbatim (do not translate).
+
+Do not guess: if you see no volume indicator, say NO and describe what you do see.

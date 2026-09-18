@@ -7,7 +7,7 @@
 //   node --test test/
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { findFieldNode, planCalls, planEdit, stripPlaceholder, unescapeXml } from "../src/mirror.mjs"
+import { dumpFailure, findFieldNode, killedDumpRecovery, needsSlotHandoff, planCalls, planEdit, probeRetryMs, slotKnowledge, stripPlaceholder, unescapeXml } from "../src/mirror.mjs"
 
 const labels = (plan) => planCalls(plan).map((c) => c.label)
 
@@ -105,4 +105,80 @@ test("an empty field reports its hint, which is emptiness and not content", () =
 test("a screen with no field reports nothing rather than the first node", () => {
   assert.equal(findFieldNode('<node resource-id="org.smarttube.stable:id/search_orb" />'), null)
   assert.equal(findFieldNode(""), null)
+})
+
+test("a failed field read backs off, and never stops trying", () => {
+  // one failed read at start-up used to end mirror mode for the session: the re-probe
+  // timer was armed only from the success path
+  assert.equal(probeRetryMs(1), 600)
+  assert.equal(probeRetryMs(2), 1500)
+  assert.equal(probeRetryMs(3), 4000)
+  assert.equal(probeRetryMs(4), 10000)
+  // stays at the slow path rather than growing without bound
+  assert.equal(probeRetryMs(9), 10000)
+  // defensive: no count, or nonsense, is still one retry
+  assert.equal(probeRetryMs(0), 600)
+  assert.equal(probeRetryMs(undefined), 600)
+})
+
+test("a dump that was SIGKILLed is named as such, not as an unexplained failure", () => {
+  // measured on the TCL: with a *used* monkey holding the UiAutomation slot,
+  // uiautomator answers rc=137 in ~1 s while the adb client itself exits 0
+  assert.match(dumpFailure({ rc: 137, out: "Killed\nrc=137" }), /rc=137/)
+  assert.match(dumpFailure({ rc: 1, out: "rc=1" }), /exited 1/)
+  assert.equal(dumpFailure({ rc: null, err: "device offline" }), "device offline")
+  assert.equal(dumpFailure({}), "uiautomator dump failed")
+})
+
+test("the slot is only lent out once the TV has proved the dump needs it", () => {
+  // nothing learned yet: ask the dump plainly. Being refused costs 0.83 s (measured),
+  // and a TV whose monkey does not take the slot never needs a handoff at all.
+  assert.equal(needsSlotHandoff(null), false)
+  // learned: a plain read came back SIGKILLed while monkey was alive
+  assert.equal(needsSlotHandoff(true), true)
+  // learned: a plain read worked with monkey alive — no handoff, ever
+  assert.equal(needsSlotHandoff(false), false)
+})
+
+test("only the reads that can teach something about the slot do", () => {
+  // a plain dump killed with monkey alive is the TV's one slot: hand it back from now on
+  assert.equal(slotKnowledge(null, { ok: false, killed: true, monkeyAlive: true }), true)
+  // a read that HAD the slot handed back and worked: still a slot the dump needs —
+  // this is the one that matters, because monkey is alive again by the time the read
+  // is taken into the model (its restart is what hands the slot back)
+  assert.equal(slotKnowledge(true, { ok: true, killed: false, monkeyAlive: true, handedBack: true }), true)
+  // a plain read that worked with monkey alive: this TV's monkey does not hold the slot
+  assert.equal(slotKnowledge(true, { ok: true, killed: false, monkeyAlive: true, handedBack: false }), false)
+  // a failure that is not the slot (device offline, no field on screen): no lesson
+  assert.equal(slotKnowledge(true, { ok: false, killed: false, monkeyAlive: true, handedBack: true }), true)
+  assert.equal(slotKnowledge(null, { ok: false, killed: false, monkeyAlive: true }), null)
+  // no monkey, no slot to argue about — what a read says about the field is not
+  // evidence about the slot (a resident but never-dialled monkey does not hold it)
+  assert.equal(slotKnowledge(true, { ok: false, killed: true, monkeyAlive: false }), true)
+  assert.equal(slotKnowledge(null, { ok: true, killed: false, monkeyAlive: false }), null)
+})
+
+test("the adb route's sequence: refused once, handed back for every read after that", () => {
+  // What the TCL does: the session's first plain read is killed, the retry hands the
+  // slot back and lands, and every read after it goes straight to the handoff instead
+  // of paying another refusal.
+  let known = null
+  const read = (r) => {
+    known = slotKnowledge(known, r)
+    return needsSlotHandoff(known)
+  }
+  assert.equal(read({ ok: false, killed: true, monkeyAlive: true }), true)
+  assert.equal(read({ ok: true, monkeyAlive: true, handedBack: true }), true)
+  assert.equal(read({ ok: true, monkeyAlive: true, handedBack: true }), true)
+})
+
+test("a killed dump with no monkey of ours alive is a stray JVM, not a handoff", () => {
+  // measured on the TCL: with the app stopped and one leaked monkey JVM resident, every
+  // dump was rc=137 while monkeyInfo().state was "off" — nothing to hand back from
+  assert.equal(killedDumpRecovery({ killed: true, monkeyAlive: true }), "handoff")
+  assert.equal(killedDumpRecovery({ killed: true, monkeyAlive: false }), "clear-strays")
+  // a failure that is not the TV killing the dump is not about the slot at all
+  assert.equal(killedDumpRecovery({ killed: false, monkeyAlive: true }), "none")
+  assert.equal(killedDumpRecovery({ killed: false, monkeyAlive: false }), "none")
+  assert.equal(killedDumpRecovery({}), "none")
 })

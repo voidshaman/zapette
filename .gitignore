@@ -15,3 +15,6 @@ assets/platform-tools.tar.gz
 .DS_Store
 screenshot.png
 *.log
+
+# python tools (tools/*.py import each other for the pty replay)
+__pycache__/

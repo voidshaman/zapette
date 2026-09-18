@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node run.mjs",
-    "test": "node --test test/",
+    "test": "node --test \"test/**/*.test.mjs\"",
     "fetch:adb": "node scripts/fetch-adb.mjs",
     "build:exe": "node scripts/build.mjs",
     "build:exe:slim": "node scripts/build.mjs --slim",

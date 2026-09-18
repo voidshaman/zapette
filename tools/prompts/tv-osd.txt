@@ -1,0 +1,13 @@
+This is a screenshot of a TCL Android TV's on-screen PICTURE SETTINGS overlay or menu, in French.
+
+Report, verbatim and in this order:
+1. Every menu item / row label you can read, top to bottom, exactly as written (do not translate).
+2. The CURRENT VALUE shown next to each item (numbers, sliders, or words like "Arrêt"/"Activé").
+3. Which item is currently HIGHLIGHTED/selected (look for a highlight bar, different background, or a
+   focus box) - say how you can tell.
+4. Any item whose label refers to backlight or luminance (French: "Retroéclairage", "Rétroéclairage",
+   "Luminosité", "Contraste", "Mode Image", "Économie d'énergie"). Quote it exactly.
+5. Whether this looks like a full-screen settings page or a small overlay panel, and roughly where on
+   the screen it sits.
+
+Do not guess or normalise: if a label is unclear, say so and give your best reading plus the alternative.
