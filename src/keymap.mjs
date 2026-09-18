@@ -99,4 +99,19 @@ export function untypeable(text, layout = "azerty") {
   return [...new Set([...String(text)].filter((c) => !reachable.has(c)))]
 }
 
+/**
+ * The stock keyboard on this platform passes injected key events through
+ * unchanged, and a switch costs 0.15s (measured), taking effect immediately: an
+ * injection sent right after the switch arrives verbatim. So the app can borrow
+ * it for the duration of a send and hand the TV's own keyboard back afterwards.
+ */
+export const CLEAN_IME = "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME"
+
+/** What to do about the TV's keyboard while text is going out. Pure, so testable. */
+export function keyboardAction({ clean, manual, own }) {
+  if (manual) return "leave" // the user pinned it with i
+  if (!clean) return "use-clean"
+  return own && own !== CLEAN_IME ? "restore" : "leave" // nothing to hand back
+}
+
 export const LAYOUTS = ["auto", "azerty", "qwerty"]

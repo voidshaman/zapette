@@ -38,7 +38,7 @@ import { homedir } from "node:os"
 import { basename, join, resolve } from "node:path"
 import { DEMO_APPS, labelFor, launchApp, listApps, loadApps, saveApps } from "./apps.mjs"
 import { forget, ipOf, loadHistory, remember } from "./devices.mjs"
-import { resolveLayout, untypeable } from "./keymap.mjs"
+import { CLEAN_IME, keyboardAction, resolveLayout, untypeable } from "./keymap.mjs"
 import { applyPlan, moveCaret, planEdit, readField, stripPlaceholder } from "./mirror.mjs"
 import { powerOff, powerOn, wakefulness as readWakefulness } from "./power.mjs"
 import { probeWol, resolveMac } from "./wol.mjs"
@@ -84,6 +84,8 @@ const state = {
   tvIme: "", // the TV's current input method
   tvImeOwn: "", // the one the TV came with, so it can be given back
   tvImeClean: false, // true while the TV runs the keyboard we switched it to
+  tvImeManual: false, // true when the user pinned the TV's keyboard with i
+  tvLocale: "", // the TV's locale, which settles the layout when the name does not
   caret: 0, // where the caret sits in the mirrored field
   log: [],
   busy: false,
@@ -496,11 +498,8 @@ const mirror = { known: false, text: "", caret: 0, probedAt: 0 }
 // short list covers the common cases and any new hint is learned the first time
 // the field is emptied (see `learnHint`).
 const hints = new Set(["rechercher", "recherchez", "search", "search youtube", "search youtube tv"])
-// The stock keyboard on this platform passes injected key events through; the
-// TCL one remaps them. Both verified against the TV (see src/keymap.mjs).
-const CLEAN_IME = "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME"
-const TV_IME_ORIGINAL_FALLBACK = "com.tcl.inputmethod.international/.T_IME"
-const TRANSLATE_NOTE = "letters are translated, but repeats may still go missing — press i for a clean keyboard"
+const TRANSLATE_NOTE = "letters get translated, but a repeated key can still go missing"
+const KEYBOARD_LEASE_MS = 6000 // how long the TV's own keyboard stays away after a send
 let learnHint = false
 const MIRROR_DEBOUNCE_MS = 1200 // a burst of typing goes out as one edit run
 const MIRROR_REFRESH_MS = 20000 // re-read the field this often while it has focus
@@ -529,17 +528,64 @@ async function detectKeyboard() {
   const ime = await adbRaw(["-s", state.serial, "shell", "settings", "get", "secure", "default_input_method"])
   const locale = await adbRaw(["-s", state.serial, "shell", "getprop", "persist.sys.locale"])
   const name = (ime.out || "").trim()
-  const where = (locale.out || "").trim()
-  state.tvKeyboard = resolveLayout(name, where)
-  state.tvIme = name
-  if (name && !state.tvImeOwn) state.tvImeOwn = name
-  state.tvImeClean = state.tvKeyboard === "qwerty"
+  state.tvLocale = (locale.out || "").trim()
+  // Only a keyboard we would have to fix counts as the TV's own.
+  if (name && name !== CLEAN_IME && !state.tvImeOwn) state.tvImeOwn = name
+  setKeyboardState(name)
   pushLog(
     state.tvKeyboard === "azerty"
       ? `⌨ TV keyboard: ${keyboardName(name)} — it remaps injected keys (a↔q, z↔w) and swallows repeated ones; ${TRANSLATE_NOTE}`
       : `⌨ TV keyboard: ${keyboardName(name)} — injected text arrives as typed`,
   )
+}
+
+/** Keep our idea of the TV's keyboard, and the layout that follows from it, in step. */
+function setKeyboardState(ime) {
+  state.tvIme = ime
+  state.tvKeyboard = resolveLayout(ime, state.tvLocale)
+  state.tvImeClean = state.tvKeyboard === "qwerty"
   update()
+}
+
+/**
+ * Borrow the TV's pass-through keyboard for as long as text is going out.
+ *
+ * Switching costs 0.15s and takes effect immediately (measured), so this happens
+ * on demand rather than on connect: nothing about the TV changes until the sender
+ * actually needs it, and releaseKeyboardSoon() hands its keyboard back after.
+ */
+async function ensureCleanKeyboard() {
+  if (state.demo || !state.serial) return
+  const todo = keyboardAction({ clean: state.tvImeClean, manual: state.tvImeManual, own: state.tvImeOwn })
+  if (todo !== "use-clean") return
+  const r = await adbRaw(["-s", state.serial, "shell", "ime", "set", CLEAN_IME])
+  if (!r.ok) {
+    pushLog(`✗ could not switch the TV's keyboard — ${firstLine(r.err || r.out)}`)
+    update()
+    return
+  }
+  setKeyboardState(CLEAN_IME)
+  pushLog(`⌨ sending with ${keyboardName(CLEAN_IME)} — ${keyboardName(state.tvImeOwn)} comes back when you stop`)
+}
+
+/** Hand the TV its own keyboard back once nothing has been sent for a moment. */
+function releaseKeyboardSoon() {
+  if (state.tvImeManual) return
+  if (leaseTimer) clearTimeout(leaseTimer)
+  leaseTimer = setTimeout(() => {
+    leaseTimer = null
+    enqueue(restoreOwnKeyboard)
+  }, KEYBOARD_LEASE_MS)
+}
+let leaseTimer = null
+
+async function restoreOwnKeyboard() {
+  const todo = keyboardAction({ clean: state.tvImeClean, manual: state.tvImeManual, own: state.tvImeOwn })
+  if (todo !== "restore") return
+  const r = await adbRaw(["-s", state.serial, "shell", "ime", "set", state.tvImeOwn])
+  if (!r.ok) return
+  setKeyboardState(state.tvImeOwn)
+  pushLog(`⌨ TV keyboard back to ${keyboardName(state.tvImeOwn)}`)
 }
 
 /** A short name for an input method id, for the log and the panel. */
@@ -562,7 +608,12 @@ function keyboardName(ime) {
 async function switchTvKeyboard() {
   if (!state.serial || state.demo) return
   const back = state.tvImeClean
-  const target = back ? state.tvImeOwn || TV_IME_ORIGINAL_FALLBACK : CLEAN_IME
+  const target = back ? state.tvImeOwn : CLEAN_IME
+  if (!target) {
+    pushLog("⌨ this TV is already answering with the keyboard text needs")
+    update()
+    return
+  }
   await adbRaw(["-s", state.serial, "shell", "ime", "enable", target])
   const r = await adbRaw(["-s", state.serial, "shell", "ime", "set", target])
   if (!r.ok) {
@@ -570,14 +621,14 @@ async function switchTvKeyboard() {
     update()
     return
   }
+  state.tvImeManual = !back // pinning the borrowed keyboard is what i is for
   pushLog(
     back
-      ? `⌨ TV keyboard restored to ${keyboardName(target)}`
-      : `⌨ TV keyboard switched to ${keyboardName(target)} — text now arrives as typed`,
+      ? `⌨ TV keyboard back to ${keyboardName(target)} — switching while sending resumes`
+      : `⌨ TV pinned to ${keyboardName(target)} — text arrives as typed`,
   )
+  setKeyboardState(target)
   mirror.known = false
-  enqueue(detectKeyboard)
-  update()
 }
 
 /** Warn when the text asks for characters the TV's keyboard cannot produce. */
@@ -635,7 +686,9 @@ async function syncMirror() {
   const desired = textInput.value
   if (desired !== mirror.text) {
     const plan = planEdit(mirror.text, desired)
+    await ensureCleanKeyboard()
     const res = await applyPlan(state.serial, plan, { layout: effectiveLayout() })
+    releaseKeyboardSoon()
     if (res.ok) {
       mirror.text = desired
       mirror.caret = plan.caretTo
@@ -881,8 +934,8 @@ function update() {
     sendInstantText.content = `${mode === "instant" ? "●" : "○"} Instant — one key at a time`
     sendKeysText.content =
       `⌨ TV keyboard: ${keyboardName(state.tvIme)} ${state.tvKeyboard.toUpperCase()}` +
-      (state.layout === "auto" ? "" : ` (forced ${state.layout.toUpperCase()})`) +
-      (state.tvImeClean ? "   i switch" : "   i fixes it")
+      (state.tvImeManual ? "   i unpins" : "   auto while sending (i pins)") +
+      (state.layout === "auto" ? "" : `  forced ${state.layout.toUpperCase()}`)
     sendKeysText.fg = state.tvImeClean ? C.ok : C.warn
     sendMirrorText.fg = mode === "mirror" ? C.ok : C.dim
     sendBlockText.fg = mode === "block" ? C.ok : C.dim
@@ -999,7 +1052,9 @@ function sendText(text, { mirror = false } = {}) {
       state.busy = true
       update()
       noteUntypeable(payload)
+      await ensureCleanKeyboard()
       const r = await inputText(state.serial, payload, effectiveLayout())
+      releaseKeyboardSoon()
       state.busy = false
       state.lastSent = `text ${JSON.stringify(payload)}`
       if (mirror) state.echo += payload

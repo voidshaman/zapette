@@ -5,7 +5,15 @@
 // longer strings). The table has to reproduce every one of those pairs.
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { buildSendMap, layoutPreview, resolveLayout, translate, untypeable } from "../src/keymap.mjs"
+import {
+  CLEAN_IME,
+  buildSendMap,
+  keyboardAction,
+  layoutPreview,
+  resolveLayout,
+  translate,
+  untypeable,
+} from "../src/keymap.mjs"
 
 const measured = [
   ["a", "q"], ["q", "a"], ["z", "w"], ["w", "z"], // the swap the user reported
@@ -76,6 +84,20 @@ test("base and shift are all input text can express, so AltGr characters are out
   assert.deepEqual(untypeable("mail@example.com", "azerty"), ["@"])
   assert.deepEqual(untypeable("hello world 1,2 3!?", "azerty"), [])
   assert.deepEqual(untypeable("a@b#c", "qwerty"), [])
+})
+
+test("the TV's keyboard is borrowed only while text is going out", () => {
+  const tcl = "com.tcl.inputmethod.international/.T_IME"
+  // TV on its own remapping keyboard, nothing pinned: borrow the pass-through one
+  assert.equal(keyboardAction({ clean: false, manual: false, own: tcl }), "use-clean")
+  // borrowed: hand the TV's own keyboard back
+  assert.equal(keyboardAction({ clean: true, manual: false, own: tcl }), "restore")
+  // pinned with i: leave both states alone
+  assert.equal(keyboardAction({ clean: true, manual: true, own: tcl }), "leave")
+  assert.equal(keyboardAction({ clean: false, manual: true, own: tcl }), "leave")
+  // already the stock keyboard: nothing to borrow, nothing to hand back
+  assert.equal(keyboardAction({ clean: true, manual: false, own: CLEAN_IME }), "leave")
+  assert.equal(keyboardAction({ clean: true, manual: false, own: "" }), "leave")
 })
 
 test("the layout is read from what the TV reports about itself", () => {

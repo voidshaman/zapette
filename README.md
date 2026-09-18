@@ -39,8 +39,9 @@ pushed to the TV after a pause, and Enter is the TV's OK button, so a search or 
 without leaving the module. Backspace edits the box; once it is empty it deletes on the TV instead, so
 a block that has already been sent can still be corrected. Send mode picks between Mirror (the
 default), Block, where Enter sends the whole string, and Instant, where every key goes to the TV as you
-type. Send mode also shows which keyboard the TV is using: i switches the TV to one that passes text
-through unchanged, k forces the translation by hand.
+type. Send mode also shows which keyboard the TV is using: the app borrows one that passes text
+through while it is sending and gives the TV its own back afterwards, i pins that borrowed keyboard
+in place instead, and k forces the translation by hand.
 
 Keys resolve in this order: Tab first, then the text box, then the shortcuts above, then the focused
 module. So while the text box has focus the keyboard belongs to it and no shortcut can fire; Tab still
@@ -60,15 +61,17 @@ The same keyboard also loses characters. Injected `hello` arrived as `hell`, `ll
 No translation can recover a key the TV never took.
 
 Selecting the stock keyboard instead fixes both at once. With it, every injection arrived exactly as
-sent, including the letters AZERTY moves and words with doubled letters. Press i in the Send mode
-module to switch, and i again to give the TV its own keyboard back; it is a TV-wide setting, so the app
-only ever does it when asked.
+sent, including the letters AZERTY moves and words with doubled letters. A switch costs 0.15 seconds
+and applies immediately, so the app borrows that keyboard for as long as text is going out: it switches
+when the sender needs it and hands the TV its own keyboard back six seconds after the last send. The TV
+is left as it was found unless i is pressed, which pins the borrowed keyboard in place; i again goes
+back to borrowing it only when sending.
 
-The app reads the keyboard from the TV when it connects. Where it knows the layout remaps, it
-translates letters on the way out, so a TV that cannot be switched still types mostly right; k cycles
-that translation between automatic, on and off. Characters behind AltGr on AZERTY, `@` and `#` among
-them, cannot be produced by `input text` at all, since it can express base and shift only: the app
-names them instead of pretending they were sent.
+The layout is read from the TV on connect and whenever the keyboard changes, so while the TV is on its
+own keyboard the letters that remap are translated on the way out and a TV that cannot be switched
+still types mostly right. k cycles that translation between automatic, on and off. Characters behind
+AltGr on AZERTY, `@` and `#` among them, cannot be produced by `input text` at all, since it can
+express base and shift only: the app names them instead of pretending they were sent.
 
 ## Mirror mode
 
