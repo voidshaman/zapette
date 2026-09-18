@@ -17,5 +17,6 @@
   },
   "dependencies": {
     "@opentui/core": "^0.5.11"
-  }
+  },
+  "license": "GPL-3.0-only"
 }
