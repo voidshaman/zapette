@@ -2,6 +2,10 @@ name: companion-apk
 
 # The companion is a separate Android artefact with a separate toolchain, so it
 # gets its own workflow. It only runs when something it is built from changes.
+#
+# Both build scripts are exercised here: build.sh on Linux and build.cmd on
+# Windows. The Windows leg is the only place the .cmd is ever actually run, so it
+# is not optional colour - without it that path would ship untested.
 on:
   push:
     branches: [main]
@@ -15,7 +19,11 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -24,24 +32,42 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # GitHub's ubuntu runners already carry the Android SDK (ANDROID_HOME),
-      # and build.sh locates build-tools through it. It also generates its own
+      # GitHub's runners already carry the Android SDK (ANDROID_HOME), and both
+      # scripts locate build-tools through it. They also generate their own
       # signing keystore when none exists, so nothing secret is needed here.
-      - name: Build the APK
+      - name: Build the APK (build.sh)
+        if: runner.os != 'Windows'
         run: |
           set -e
           echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
           ./companion/build.sh
           ls -l dist/zapette-companion.apk
 
+      - name: Build the APK (build.cmd)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          echo ANDROID_HOME=%ANDROID_HOME%
+          companion\build.cmd
+          dir dist\zapette-companion.apk
+
       - name: Verify the signature (an unsigned APK would install nowhere)
+        if: runner.os != 'Windows'
         run: |
           set -e
           BT="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)"
           "$BT/apksigner" verify --print-certs dist/zapette-companion.apk
 
+      - name: Verify the signature (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bt = Get-ChildItem "$env:ANDROID_HOME\build-tools" -Directory |
+                Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          & "$($bt.FullName)\apksigner.bat" verify --print-certs dist\zapette-companion.apk
+
       - uses: actions/upload-artifact@v4
         with:
-          name: zapette-companion-apk
+          name: zapette-companion-apk-${{ matrix.os }}
           path: dist/zapette-companion.apk
           if-no-files-found: error

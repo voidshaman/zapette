@@ -3,8 +3,21 @@ name: release
 # A release ships two things: the client binaries for each platform (each with
 # adb embedded, so no separate adb install on the target machine) and the
 # companion APK that goes on the TV.
+#
+# It publishes without being asked:
+#   - pushing a `v*` tag  -> a versioned release for that tag
+#   - pushing to main     -> updates the rolling `latest` pre-release, so there
+#                            are always current binaries to download
+# A documentation-only push is ignored, because republishing 250 MB of binaries
+# for a typo fix would be silly. Tags are unaffected by that filter.
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
     tags: ["v*"]
   workflow_dispatch:
 
@@ -19,13 +32,18 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "26.x"
           cache: npm
 
       - uses: oven-sh/setup-bun@v2
 
       - name: Install
         run: npm ci --no-audit --no-fund
+
+      # A release with a broken suite is worse than no release, so the gate is
+      # here rather than left to the separate test workflow.
+      - name: Test
+        run: npm test
 
       # Cross-builds every target; each one stages the adb build for the
       # platform it is compiled for, not for the runner.
@@ -46,7 +64,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: zapette-binaries
-          # Not `dist/zapette*`: that would also sweep up the APK and its .idsig
+          # Not `dist/zapette*`: that would also sweep up the APK's .idsig
           # sidecar. These are the stems scripts/build.mjs writes.
           path: |
             dist/zapette
@@ -57,10 +75,26 @@ jobs:
             dist/zapette-companion.apk
           if-no-files-found: error
 
-      - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Publish (tag -> versioned release, main -> rolling latest)
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'Latest build' }}
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          make_latest: ${{ startsWith(github.ref, 'refs/tags/') && 'true' || 'false' }}
+          generate_release_notes: ${{ startsWith(github.ref, 'refs/tags/') }}
+          body: |
+            Client binaries for every platform (adb embedded, so the target machine
+            needs no adb and no Node) plus the companion APK for the TV.
+
+            Put the APK on the TV with:
+
+                adb install -r zapette-companion.apk
+
+            or just run the client and answer yes when it offers to set the TV up;
+            it installs and pairs the companion for you on first connect.
+
+            Built from ${{ github.sha }}.
           files: |
             dist/zapette
             dist/zapette-slim
@@ -68,12 +102,3 @@ jobs:
             dist/zapette-linux-*
             dist/zapette-win32-*
             dist/zapette-companion.apk
-          generate_release_notes: true
-          body: |
-            Client binaries for each platform (adb embedded) and the companion
-            APK for the TV. Install the APK on the TV with:
-
-                adb install -r zapette-companion.apk
-
-            The client installs and pairs it for you on first connect if you
-            answer yes at the prompt.
