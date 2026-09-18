@@ -53,12 +53,8 @@ npm install
 ./run.sh
 ```
 
-**Either way, ADB has to be enabled for full functionality.** Every part of Zapette — keys, text, the
-app list, volume, power — reaches the TV over ADB, so this is not an optional extra: with wireless
-debugging off, the app finds no devices at all. Turn it on once in *Settings → Developer options → ADB
-over network*, and accept the debugging prompt on the TV the first time this machine connects. A
-release binary carries its own adb, so there is nothing to install on your machine — the switch on the
-TV is the part that matters.
+Either way, your TV needs wireless debugging switched on once: *Settings → Developer options → ADB
+over network*.
 
 ## Usage
 
