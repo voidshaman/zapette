@@ -41,5 +41,5 @@ no zip reader built in, so that would be a small module of its own.
 
 Devices are remembered with their address, MAC and label, so they can be reconnected or woken without
 retyping anything. Only devices that are not currently connected appear in the selector, and x forgets
-one. State lives in `~/.config/tv-remote-tui/`.
+one. State lives in `~/.config/zapette/`.
 

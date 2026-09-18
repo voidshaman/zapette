@@ -28,7 +28,7 @@ platform-specific code, including the neighbour-cache output of all three system
 compiled binary unpacks its adb from.
 
 A compiled binary unpacks its adb the first time it needs it, into
-`<cache>/tv-remote-tui/platform-tools/<platform>-<arch>/`. On Windows that includes the two DLLs adb
+`<cache>/zapette/platform-tools/<platform>-<arch>/`. On Windows that includes the two DLLs adb
 will not start without. Cross-building installs the target's interface library first, which npm only
 accepts with `--force` because the package declares another system. Linux needs both its glibc and
 its musl build present. A build for a platform you are not on is produced but not exercised by the
