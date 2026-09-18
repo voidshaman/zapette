@@ -2,9 +2,9 @@
 
 # zapette
 
-**A terminal remote for an Android TV, built so that typing on one stops hurting.**
+**A remote control for your Android TV that lives in your terminal — built so that typing on a TV stops hurting.**
 
-Text lands in the TV's own focused field in **66 ms** instead of 2.2 s.
+Text lands in the TV's own box in **66 ms** instead of 2.2 s.
 Keys answer in **2.7 ms** instead of 1238 ms.
 
 [![test](https://github.com/voidshaman/zapette/actions/workflows/test.yml/badge.svg)](https://github.com/voidshaman/zapette/actions/workflows/test.yml)
@@ -17,33 +17,32 @@ Keys answer in **2.7 ms** instead of 1238 ms.
 
 ![zapette driving a TCL Android TV over Wi-Fi: volume meter, D-pad, text entry with three send modes, and a live log of every key with its latency](docs/zapette.png)
 
-<sub>Driving a real TV over Wi-Fi. No TV handy? `./run.sh --demo` drives the whole UI offline.</sub>
+<sub>Driving a real TV over Wi-Fi. No TV handy? `./run.sh --demo` drives the whole interface offline.</sub>
 
 ## Features
 
-- **Type on the TV with a real keyboard.** The box mirrors whatever field the TV has focused — edit
-  here and the change lands there. No more arrow-keying around an on-screen keyboard.
-- **Three send modes for picky apps.** Mirror the TV's field live, compose a block and send it with
-  Enter, or type key-by-key — whatever the app in front of you accepts.
-- **Foreign layouts handled for you.** Reads the TV's own keyboard layout on connect, so an AZERTY
-  set no longer turns your `q` into an `a`.
-- **Every key a remote has.** D-pad, OK, Back, Home, volume, power — each answering in milliseconds,
-  with the latency logged next to it.
-- **App launcher and task manager.** See what the TV can launch and what is running, start or stop
-  apps, and install APKs straight from this machine.
-- **Power control.** Wake the TV over the network, send it to sleep, or toggle it — the button shows
-  the state it read from the set, not the state it hopes for.
-- **A mouse cursor for the TV.** Hand your machine's mouse to a pointer on the TV for the rare app
-  that wants taps.
-- **Works with nothing installed on the TV.** Everything above runs over plain adb. The optional
-  companion app exists only to make it faster — and it answers to this machine alone.
-- **Runs anywhere.** macOS, Linux and Windows, x64 and arm64; the release binary carries its own
-  adb, so there is nothing else to install.
+- **Type with a real keyboard.** Searching YouTube or signing into an app no longer means
+  arrow-keying across an on-screen keyboard. zapette shows you the same text the TV has in its box —
+  edit it on your computer and the TV follows along.
+- **It speaks your TV's language.** It reads the TV's keyboard layout when it connects and adjusts —
+  so on a French AZERTY set, the letters you press are the letters that appear.
+- **Every button a remote has.** Arrows, OK, Back, Home, volume, power — all from your keyboard,
+  all instant, each one logged with the time it took.
+- **Launch and manage apps.** See everything the TV can open and everything it's running, start or
+  stop any of it, and install new apps from files on your computer.
+- **Wake it up, put it to sleep.** Turn the TV on from your desk — it can wake the set over the
+  network — and send it back to sleep when you're done.
+- **A mouse when you need one.** Some apps insist on taps; hand your computer's mouse to a pointer
+  on the TV and click away.
+- **Nothing to install on the TV.** It works out of the box with the debugging interface already
+  built into Android TV. The first time it meets your TV it asks before touching anything, and an
+  optional companion app — which only your computer can talk to — makes it faster still.
+- **Runs anywhere.** macOS, Linux and Windows. One download, nothing else to install.
 
 ## Install
 
-**From a release** — grab the binary for your platform from [Releases](../../releases). It carries its
-own adb, so it needs no Node and no npm.
+**From a release** — grab the download for your platform from [Releases](../../releases). That's the
+whole install: no Node, no npm, nothing else.
 
 **From source**
 
@@ -54,41 +53,41 @@ npm install
 ./run.sh
 ```
 
-Needs **Node 26.4+**, and a TV with wireless debugging enabled (Developer options → ADB over network).
+Either way, your TV needs wireless debugging switched on once: *Settings → Developer options → ADB
+over network*.
 
 ## Usage
 
 ```sh
-./run.sh          # pick a device, then the remote
-./run.sh --auto   # first connected device
-./run.sh --demo   # no TV: drive the UI offline
+./run.sh          # pick your TV from the list, and you're driving
+./run.sh --auto   # skip the list, use the first TV found
+./run.sh --demo   # no TV: try the whole interface offline
 ```
 
-| what | how |
+| You want to… | Do this |
 |---|---|
-| **Type** | `3` for Text. The box mirrors the TV's field: edit here and the difference is pushed to the TV. Enter is the TV's OK. |
-| **Steer** | Arrows, Enter and Backspace in the D-pad module — or click the on-screen buttons. |
-| **Apps** | `l` lists what the TV can launch and what is running: Enter launches, `k` stops, `f` filters, `i` installs an APK from this machine. |
-| **Power** | `w` wakes it (Wake-on-LAN), `s` sleeps it, `p` toggles. Dark to awake takes 9–11 s. |
-| **Companion** | `c` probes the TV-side service, starting it if it is not running. |
-| **Cursor** | `m` hands this machine's mouse to a pointer on the TV; `m` or Esc releases it. |
+| Move around the TV | Arrow keys, `Enter` for OK, `Backspace` for Back |
+| Type into a search box | Press `3`, type, `Enter` |
+| Change the volume | Press `2`, then `↑` `↓` |
+| Open or close an app | Press `l`, pick it, `Enter` |
+| Wake / sleep the TV | `w` / `s` |
 
 <details>
 <summary><b>Every key</b></summary>
 
 | key | does |
 |---|---|
-| `Tab` / `Shift+Tab` | switch module (works from inside the text box) |
+| `Tab` / `Shift+Tab` | switch panel (works from inside the text box) |
 | `1` `2` `3` `4` | jump to D-pad / Volume / Text / Send mode |
 | arrows, `Enter`, `Backspace`/`b`, `h` | drive the TV: direction, OK, Back, Home |
-| `↑` `↓` or `−` `+` | volume, in the Volume module |
+| `↑` `↓` or `−` `+` | volume, in the Volume panel |
 | `w` / `s` / `p` | wake / sleep / power |
 | `l` | app list and task manager |
-| `i` | install an APK (opens a filesystem picker) |
-| `c` | probe the companion service |
-| `m` | cursor mode |
-| `d` | device selector |
-| `Esc` | leave a screen or release cursor mode |
+| `i` | install an app file (opens a file picker) |
+| `c` | check on the companion app |
+| `m` | mouse mode |
+| `d` | pick a different TV |
+| `Esc` | leave a screen or release the mouse |
 
 While the text box has focus the keyboard belongs to it, so no shortcut can fire — `Tab` still gets
 you out.
@@ -116,40 +115,32 @@ app degrades to plain adb instead of breaking.
 ## FAQ
 
 <details>
-<summary>Does it need root?</summary>
+<summary>Does it need root, or anything installed on the TV?</summary>
 
-No. The stock adb shell user has no root on these TVs, and nothing here asks for it.
+No. It works with what every Android TV already has. The optional companion app makes typing and
+keys faster, but everything works without it.
 </details>
 
 <details>
-<summary>Why does my TV show the wrong letters, or lose repeated ones?</summary>
+<summary>Why does my TV show the wrong letters, or swallow repeated ones?</summary>
 
-`adb shell input text` sends a **US key position**, and the TV renders that position through its own
-keyboard — on an AZERTY set, `q` arrives as `a`. Repeated characters can also be eaten as multi-press.
-The app reads the TV's keyboard layout on connect and borrows a pass-through keyboard while text is
-going out, then hands the TV its own back. Details in [docs/typing.md](docs/typing.md).
+With other tools, that happens because they type as if every TV had a US keyboard. zapette reads
+your TV's actual keyboard layout when it connects and adjusts — so it shouldn't happen here. The
+long version is in [docs/typing.md](docs/typing.md).
 </details>
 
 <details>
-<summary>Is the companion app required?</summary>
+<summary>Can someone else on my network drive my TV through this?</summary>
 
-No. Everything works over adb without it; the companion exists only to remove the per-keystroke JVM
-spawn. See [docs/companion.md](docs/companion.md).
+No. The companion app only answers the computer it was set up with, and proves it on every
+connection.
 </details>
 
 <details>
-<summary>Can something else on my network drive my TV through this?</summary>
+<summary>My TV keeps falling asleep on its own.</summary>
 
-No. The companion binds to the TV's loopback only, and every connection must answer an HMAC challenge
-against a secret that was provisioned over adb. A companion with no secret stored accepts nothing.
-</details>
-
-<details>
-<summary>My TV keeps going to sleep on its own.</summary>
-
-That is the TV's own power policy, not the app — one set tested here sleeps on a vendor auto-standby
-timer within minutes of idle. Wake-on-LAN brings the network back (enable "networked standby" in the
-TV's settings first), and `w` does that for you.
+That's the TV's own power saving, not zapette. Switch on "networked standby" in the TV's settings
+and `w` will wake it back up over the network.
 </details>
 
 ## Docs
@@ -158,8 +149,8 @@ TV's settings first), and `w` does that for you.
 |---|---|
 | [docs/typing.md](docs/typing.md) | the TV's own keyboard, AZERTY, characters it eats, mirror mode and carets |
 | [docs/latency.md](docs/latency.md) | why batching exists, how the monkey socket works, power timings |
-| [docs/companion.md](docs/companion.md) | the APK, its security model, the first-connect install flow |
-| [docs/apps.md](docs/apps.md) | app list, task manager, APK installer, device history |
+| [docs/companion.md](docs/companion.md) | the companion app, its security model, the first-connect setup |
+| [docs/apps.md](docs/apps.md) | app list, task manager, app installer, device history |
 | [docs/build.md](docs/build.md) | standalone binaries, cross-building, per-platform notes |
 | [HANDOFF.md](HANDOFF.md) | working state and the raw measurements |
 
@@ -168,11 +159,11 @@ TV's settings first), and `w` does that for you.
 - [OpenTUI](https://github.com/sst/opentui) — the terminal UI framework behind every panel on screen,
   and the project's only npm dependency.
 - [Android platform-tools](https://developer.android.com/tools/releases/platform-tools) — `adb` does
-  all the talking to the TV; the release binaries vendor it unmodified (Apache-2.0).
+  all the talking to the TV; the release downloads bundle it unmodified (Apache-2.0).
 - [Bun](https://bun.sh) — compiles the standalone executables.
 - [Node.js](https://nodejs.org) — the runtime when running from source.
 
 ## Licence
 
-**GPL-3.0-only.** The vendored adb is Apache-2.0 (see [`assets/NOTICE.txt`](assets/NOTICE.txt)), which
+**GPL-3.0-only.** The bundled adb is Apache-2.0 (see [`assets/NOTICE.txt`](assets/NOTICE.txt)), which
 is compatible with GPLv3.
