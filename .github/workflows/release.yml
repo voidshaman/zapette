@@ -109,19 +109,10 @@ jobs:
           name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'Latest build' }}
           prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
           make_latest: ${{ startsWith(github.ref, 'refs/tags/') && 'true' || 'false' }}
-          generate_release_notes: ${{ startsWith(github.ref, 'refs/tags/') }}
+          generate_release_notes: false
           body: |
-            Client binaries for every platform (adb embedded, so the target machine
-            needs no adb and no Node) plus the companion APK for the TV.
-
-            Put the APK on the TV with:
-
-                adb install -r zapette-companion.apk
-
-            or just run the client and answer yes when it offers to set the TV up;
-            it installs and pairs the companion for you on first connect.
-
-            Built from ${{ github.sha }}.
+            Client binaries (adb included) and the companion APK. Install it with
+            `adb install -r zapette-companion.apk`, or let the client do it on first connect.
           files: |
             dist/zapette
             dist/zapette-slim
