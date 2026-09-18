@@ -32,23 +32,59 @@ up, and D-pad has focus at the start.
 
 Inside D-pad, the arrows drive the TV, Enter is OK, Backspace or b is Back, h is Home. In Volume, up
 and down change the TV volume, and the minus and plus buttons do the same; left and right switch
-module. In Text, type and press Enter to send the string, or use instant mode and every key goes to the
-TV as you type. Backspace edits the field, and once it is empty it deletes on the TV instead, so a
-block that has already been sent can still be corrected. Send mode toggles instant and block. Every
-on-screen button is also clickable.
+module. Every on-screen button is also clickable.
+
+In Text, the box mirrors the TV's field by default: the field's contents are read into it, edits are
+pushed to the TV after a pause, and Enter is the TV's OK button, so a search or a form can be filled
+without leaving the module. Backspace edits the box; once it is empty it deletes on the TV instead, so
+a block that has already been sent can still be corrected. Send mode picks between Mirror (the
+default), Block, where Enter sends the whole string, and Instant, where every key goes to the TV as you
+type. Send mode also shows which keyboard the TV is using: i switches the TV to one that passes text
+through unchanged, k forces the translation by hand.
 
 Keys resolve in this order: Tab first, then the text box, then the shortcuts above, then the focused
 module. So while the text box has focus the keyboard belongs to it and no shortcut can fire; Tab still
 gets you out, and Escape on an empty field moves on.
 
-## Text and keyboard layouts
+## TV keyboards
 
-`adb shell input text` translates each character into a **US key position** before sending, and the app
-that receives it renders that position through its own layout. A native Android field does the same
-translation back, so text arrives as typed (verified on the TCL by reading the pixels of SmartTube's
-search field). An app that maps key positions through another layout, French AZERTY say, would show
-`q` where you typed `a` and `w` where you typed `z`. If that happens in a particular app, the app is
-where to look, not the remote.
+`adb shell input text` turns each character into a **US key position**, and the TV renders that
+position through its own keyboard. Measured on this TCL, whose keyboard is French AZERTY, by reading
+the field back after every injection:
+
+    injected a q z w m ; ,      TV showed q a w z , m ;
+    injected @ ) _ - 1          TV showed 2 0 degrees ) &
+
+The same keyboard also loses characters. Injected `hello` arrived as `hell`, `llll` as `lll`,
+`helloworld` as `hellzorld`: repeated key events are treated as multi-press and the repeat is eaten.
+No translation can recover a key the TV never took.
+
+Selecting the stock keyboard instead fixes both at once. With it, every injection arrived exactly as
+sent, including the letters AZERTY moves and words with doubled letters. Press i in the Send mode
+module to switch, and i again to give the TV its own keyboard back; it is a TV-wide setting, so the app
+only ever does it when asked.
+
+The app reads the keyboard from the TV when it connects. Where it knows the layout remaps, it
+translates letters on the way out, so a TV that cannot be switched still types mostly right; k cycles
+that translation between automatic, on and off. Characters behind AltGr on AZERTY, `@` and `#` among
+them, cannot be produced by `input text` at all, since it can express base and shift only: the app
+names them instead of pretending they were sent.
+
+## Mirror mode
+
+The field is read with a uiautomator dump, about 2.5 seconds, twice a moment apart: Leanback's search
+field animates its text in, and a read taken straight after typing catches only a prefix of it
+(`hello` came back as `hell`). An empty Android field reports its own hint through accessibility, so a
+bare search box reads as `Rechercher`; hint text counts as empty, and a hint the app has not seen
+before is learned the first time it empties the field itself.
+
+Where the caret sits is the one thing a dump does not report, and guessing it wrong puts an edit in the
+wrong place: clearing an 8-character field left its last character behind and the next insert landed in
+front of it. So an edit never assumes the caret. It parks the caret at the end first, then walks back,
+deletes and inserts as much as is needed and no more: appending a word is one insert, clearing a field
+is one delete run, and a change in the middle is a walk back, a delete run and one insert. Any edit
+that removed text is followed by another read, so a model that drifted is corrected rather than
+trusted.
 
 ## Input latency
 

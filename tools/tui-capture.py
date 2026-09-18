@@ -32,6 +32,12 @@ def parse_args():
     p.add_argument("--rows", type=int, default=46)
     p.add_argument("--wait", type=float, default=0.0, help="wait this long before the next --send")
     p.add_argument(
+        "--hold",
+        type=float,
+        default=4.0,
+        help="keep watching this long after the last --send, so batched work can land",
+    )
+    p.add_argument(
         "--send",
         action="append",
         default=[],
@@ -186,7 +192,10 @@ def main():
     screen = Screen(args.cols, args.rows)
 
     # Each --send fires `--wait` seconds after the previous one, so a sequence of
-    # waits gives every frame time to land before the next key.
+    # waits gives every frame time to land before the next key. --hold keeps the
+    # app alive afterwards: a remote that batches its device calls (or waits for a
+    # typing pause before syncing) has work still in flight at the last keystroke,
+    # and killing it there would hide exactly what the run was meant to show.
     plan = []
     at = args.wait
     for s in args.send:
@@ -196,7 +205,7 @@ def main():
 
     start = time.time()
     idx = 0
-    while time.time() - start < at + 3:
+    while time.time() - start < at + args.hold:
         r, _, _ = select.select([fd], [], [], 0.1)
         if r:
             try:

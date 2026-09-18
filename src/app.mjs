@@ -25,6 +25,7 @@ import {
   installApk,
   listPackages,
   inputText,
+  adb as adbRaw,
   keyevent,
   listDevices,
   looksWedged,
@@ -37,6 +38,8 @@ import { homedir } from "node:os"
 import { basename, join, resolve } from "node:path"
 import { DEMO_APPS, labelFor, launchApp, listApps, loadApps, saveApps } from "./apps.mjs"
 import { forget, ipOf, loadHistory, remember } from "./devices.mjs"
+import { resolveLayout, untypeable } from "./keymap.mjs"
+import { applyPlan, moveCaret, planEdit, readField, stripPlaceholder } from "./mirror.mjs"
 import { powerOff, powerOn, wakefulness as readWakefulness } from "./power.mjs"
 import { probeWol, resolveMac } from "./wol.mjs"
 
@@ -75,7 +78,13 @@ const state = {
   serial: null,
   deviceLabel: "",
   module: "dpad",
-  sendMode: "block", // "block" | "instant"
+  sendMode: "mirror", // "mirror" (edit the TV's field here) | "block" | "instant"
+  layout: "auto", // what the TV's keyboard is: "auto" | "azerty" | "qwerty"
+  tvKeyboard: "qwerty", // what the TV reported (auto resolves to this)
+  tvIme: "", // the TV's current input method
+  tvImeOwn: "", // the one the TV came with, so it can be given back
+  tvImeClean: false, // true while the TV runs the keyboard we switched it to
+  caret: 0, // where the caret sits in the mirrored field
   log: [],
   busy: false,
   echo: "",
@@ -331,10 +340,18 @@ const sendBox = new BoxRenderable(renderer, {
   borderStyle: "heavy",
   borderColor: C.faint,
   flexDirection: "column",
-  height: 5,
+  height: 7,
   paddingX: 1,
   justifyContent: "center",
   backgroundColor: BG,
+})
+const sendMirrorRow = new BoxRenderable(renderer, {
+  height: 1,
+  paddingX: 1,
+  onMouseDown(event) {
+    event.preventDefault?.()
+    setSendMode("mirror")
+  },
 })
 const sendInstantRow = new BoxRenderable(renderer, {
   height: 1,
@@ -352,12 +369,26 @@ const sendBlockRow = new BoxRenderable(renderer, {
     setSendMode("block")
   },
 })
+const sendKeysRow = new BoxRenderable(renderer, {
+  height: 1,
+  paddingX: 1,
+  onMouseDown(event) {
+    event.preventDefault?.()
+    cycleLayout()
+  },
+})
+const sendMirrorText = new TextRenderable(renderer, { content: "", fg: C.dim })
 const sendInstantText = new TextRenderable(renderer, { content: "", fg: C.dim })
 const sendBlockText = new TextRenderable(renderer, { content: "", fg: C.dim })
+const sendKeysText = new TextRenderable(renderer, { content: "", fg: C.dim })
+sendKeysRow.add(sendKeysText)
+sendMirrorRow.add(sendMirrorText)
 sendInstantRow.add(sendInstantText)
 sendBlockRow.add(sendBlockText)
-sendBox.add(sendInstantRow)
+sendBox.add(sendMirrorRow)
 sendBox.add(sendBlockRow)
+sendBox.add(sendInstantRow)
+sendBox.add(sendKeysRow)
 
 const textCol = new BoxRenderable(renderer, { flexDirection: "column", backgroundColor: BG })
 textCol.add(textTitle)
@@ -456,6 +487,197 @@ function pushLog(line) {
   if (state.log.length > 8) state.log.length = 8
 }
 
+// ---------------------------------------------------------------- mirror
+// What the TV's focused field is believed to hold, and where its caret is. Read
+// with a probe (uiautomator, ~2.5s), kept current by tracking our own edits, and
+// corrected by another probe on demand. See src/mirror.mjs for the measurements.
+const mirror = { known: false, text: "", caret: 0, probedAt: 0 }
+// Emptiness, as this TV reports it: an empty field hands back its own hint. The
+// short list covers the common cases and any new hint is learned the first time
+// the field is emptied (see `learnHint`).
+const hints = new Set(["rechercher", "recherchez", "search", "search youtube", "search youtube tv"])
+// The stock keyboard on this platform passes injected key events through; the
+// TCL one remaps them. Both verified against the TV (see src/keymap.mjs).
+const CLEAN_IME = "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME"
+const TV_IME_ORIGINAL_FALLBACK = "com.tcl.inputmethod.international/.T_IME"
+const TRANSLATE_NOTE = "letters are translated, but repeats may still go missing — press i for a clean keyboard"
+let learnHint = false
+const MIRROR_DEBOUNCE_MS = 1200 // a burst of typing goes out as one edit run
+const MIRROR_REFRESH_MS = 20000 // re-read the field this often while it has focus
+
+function scheduleSync() {
+  if (syncTimer) clearTimeout(syncTimer)
+  syncTimer = setTimeout(() => {
+    syncTimer = null
+    enqueue(syncMirror)
+  }, MIRROR_DEBOUNCE_MS)
+}
+let syncTimer = null
+
+/** What the TV's keyboard is, after the user's override is taken into account. */
+function effectiveLayout() {
+  return state.layout === "auto" ? state.tvKeyboard : state.layout
+}
+
+/**
+ * Ask the TV what keyboard it will render our key events with. The TCL keyboard
+ * on a French set remaps them (see src/keymap.mjs); the stock one does not, so
+ * this decides whether the app translates before injecting.
+ */
+async function detectKeyboard() {
+  if (!state.serial || state.demo) return
+  const ime = await adbRaw(["-s", state.serial, "shell", "settings", "get", "secure", "default_input_method"])
+  const locale = await adbRaw(["-s", state.serial, "shell", "getprop", "persist.sys.locale"])
+  const name = (ime.out || "").trim()
+  const where = (locale.out || "").trim()
+  state.tvKeyboard = resolveLayout(name, where)
+  state.tvIme = name
+  if (name && !state.tvImeOwn) state.tvImeOwn = name
+  state.tvImeClean = state.tvKeyboard === "qwerty"
+  pushLog(
+    state.tvKeyboard === "azerty"
+      ? `⌨ TV keyboard: ${keyboardName(name)} — it remaps injected keys (a↔q, z↔w) and swallows repeated ones; ${TRANSLATE_NOTE}`
+      : `⌨ TV keyboard: ${keyboardName(name)} — injected text arrives as typed`,
+  )
+  update()
+}
+
+/** A short name for an input method id, for the log and the panel. */
+function keyboardName(ime) {
+  if (!ime) return "unknown"
+  if (ime.includes("tcl.inputmethod")) return "TCL"
+  if (ime.includes("inputmethod.latin")) return "Gboard"
+  return ime.split("/")[0].split(".").pop()
+}
+
+/**
+ * Switch the TV's own keyboard for one that passes injected keys through.
+ *
+ * Measured on the TCL: with its own keyboard an injected "hello" arrives as
+ * "hell" and "helloworld" as "hellzorld" — the AZERTY remap plus repeated keys
+ * being swallowed. With the stock keyboard the same injections arrive verbatim,
+ * so this is the fix for typing, not a translation table. It is a TV-wide
+ * setting, so it is only ever done when asked for, and can be undone the same way.
+ */
+async function switchTvKeyboard() {
+  if (!state.serial || state.demo) return
+  const back = state.tvImeClean
+  const target = back ? state.tvImeOwn || TV_IME_ORIGINAL_FALLBACK : CLEAN_IME
+  await adbRaw(["-s", state.serial, "shell", "ime", "enable", target])
+  const r = await adbRaw(["-s", state.serial, "shell", "ime", "set", target])
+  if (!r.ok) {
+    pushLog(`✗ could not change the TV's keyboard — ${firstLine(r.err || r.out)}`)
+    update()
+    return
+  }
+  pushLog(
+    back
+      ? `⌨ TV keyboard restored to ${keyboardName(target)}`
+      : `⌨ TV keyboard switched to ${keyboardName(target)} — text now arrives as typed`,
+  )
+  mirror.known = false
+  enqueue(detectKeyboard)
+  update()
+}
+
+/** Warn when the text asks for characters the TV's keyboard cannot produce. */
+function noteUntypeable(text) {
+  const missing = untypeable(text, effectiveLayout())
+  if (!missing.length) return
+  pushLog(`⚠ the TV's keyboard cannot type ${missing.map((c) => `"${c}"`).join(", ")} — it will show something else`)
+}
+
+/** Read the TV's field. Cheap enough to do on entry, after OK, and periodically. */
+async function probeField() {
+  if (!state.serial || state.demo || state.sendMode !== "mirror") return
+  const r = await readField(state.serial)
+  if (!r.ok) {
+    mirror.known = false
+    pushLog(`ℹ ${r.error}`)
+    update()
+    return
+  }
+  // A field we just emptied tells us what it uses to say "empty".
+  if (learnHint && r.text.trim()) {
+    hints.add(r.text.trim().toLowerCase())
+    learnHint = false
+  }
+  const text = stripPlaceholder(r.text, hints)
+  const shownHint = text !== r.text
+  // Never clobber local text the user has typed but not sent yet.
+  const dirty = textInput.value !== mirror.text
+  mirror.known = true
+  mirror.text = text
+  mirror.probedAt = Date.now()
+  if (dirty) {
+    pushLog(`ℹ the TV field moved on — holding ${textInput.value.length} local char(s)`)
+  } else {
+    mirror.caret = text.length
+    state.caret = text.length
+    textInput.value = text
+    pushLog(shownHint ? `✓ TV field is empty (it shows its hint "${r.text}")` : `✓ TV field holds ${text.length} char(s)`)
+  }
+  update()
+  if (state.module === "text") setTimeout(() => enqueue(probeField), MIRROR_REFRESH_MS)
+}
+
+/** Where the caret lands after a local change, derived from the change itself. */
+function caretAfterChange(before, after) {
+  let p = 0
+  while (p < before.length && p < after.length && before[p] === after[p]) p += 1
+  return after.length > before.length ? p + (after.length - before.length) : p
+}
+
+/** Send the local text as the shortest edit the TV needs. */
+async function syncMirror() {
+  if (state.sendMode !== "mirror" || !state.serial || state.demo) return
+  if (!mirror.known) return // nothing probed yet: do not guess at the field's contents
+  const desired = textInput.value
+  if (desired !== mirror.text) {
+    const plan = planEdit(mirror.text, desired)
+    const res = await applyPlan(state.serial, plan, { layout: effectiveLayout() })
+    if (res.ok) {
+      mirror.text = desired
+      mirror.caret = plan.caretTo
+      state.caret = plan.caretTo
+      pushLog(`✓ TV field ← ${res.labels.join("  ") || "no change"}`)
+      // An edit that removed text leaned on our idea of what the field held, so
+      // read it back and correct the model if the TV disagreed.
+      // An edit that emptied the field teaches us its hint text on the next read.
+      if (desired === "") learnHint = true
+      if (plan.removeLength > 0) {
+        mirror.probedAt = 0
+        enqueue(probeField)
+      }
+    } else {
+      pushLog(`✗ edit failed — ${firstLine(res.error)}`)
+      mirror.probedAt = 0
+      enqueue(probeField)
+    }
+    update()
+    return
+  }
+  const delta = state.caret - mirror.caret
+  if (delta) {
+    const res = await moveCaret(state.serial, delta)
+    if (res.ok) {
+      mirror.caret = state.caret
+      pushLog(`✓ TV caret ${delta > 0 ? "+" : ""}${delta}`)
+    }
+    update()
+  }
+}
+
+/** Sync first, then a key, so navigation never overtakes the text. */
+function enqueueAfterSync(part) {
+  if (syncTimer) {
+    clearTimeout(syncTimer)
+    syncTimer = null
+  }
+  enqueue(syncMirror)
+  enqueuePart(part)
+}
+
 // ---------------------------------------------------------------- batching
 // Sending is the slow part, and it is the TV that is slow, not the network: a
 // shell round trip measures 0.07s here, but every `input` invocation starts a
@@ -512,13 +734,25 @@ function enqueue(fn) {
   return chain
 }
 
+function cycleLayout() {
+  const order = ["auto", "azerty", "qwerty"]
+  state.layout = order[(order.indexOf(state.layout) + 1) % order.length]
+  pushLog(`⌨ keyboard override: ${state.layout.toUpperCase()}`)
+  update()
+}
+
 function setSendMode(mode) {
   state.sendMode = mode
+  if (mode === "mirror") {
+    mirror.known = false
+    enqueue(probeField)
+  }
   update()
 }
 
 function focusModule(name) {
   state.module = name
+  if (name === "text" && state.sendMode === "mirror") enqueue(probeField)
   update()
 }
 
@@ -636,15 +870,23 @@ function update() {
     if (!instant && hasFocus("text")) textInput.focus()
     else textInput.blur()
 
-    fieldBadge.content = instant ? "MODE: INSTANT" : "MODE: BLOCK"
-    fieldBadge.fg = instant ? C.warn : C.dim
+    const mode = state.sendMode
+    fieldBadge.content = `MODE: ${mode.toUpperCase()}`
+    fieldBadge.fg = mode === "instant" ? C.warn : mode === "mirror" ? C.ok : C.dim
     echoText.content = instant ? `› ${state.echo || "…"}` : ""
     textHint.content = instant ? "⌫ = DEL" : ""
 
-    sendInstantText.content = `${instant ? "●" : "○"} Instant — one key at a time`
-    sendBlockText.content = `${instant ? "○" : "●"} Block — ⏎ sends the whole string`
-    sendInstantText.fg = instant ? C.ok : C.dim
-    sendBlockText.fg = instant ? C.dim : C.ok
+    sendMirrorText.content = `${mode === "mirror" ? "●" : "○"} Mirror — the TV's field, edited here`
+    sendBlockText.content = `${mode === "block" ? "●" : "○"} Block — ⏎ sends the string`
+    sendInstantText.content = `${mode === "instant" ? "●" : "○"} Instant — one key at a time`
+    sendKeysText.content =
+      `⌨ TV keyboard: ${keyboardName(state.tvIme)} ${state.tvKeyboard.toUpperCase()}` +
+      (state.layout === "auto" ? "" : ` (forced ${state.layout.toUpperCase()})`) +
+      (state.tvImeClean ? "   i switch" : "   i fixes it")
+    sendKeysText.fg = state.tvImeClean ? C.ok : C.warn
+    sendMirrorText.fg = mode === "mirror" ? C.ok : C.dim
+    sendBlockText.fg = mode === "block" ? C.ok : C.dim
+    sendInstantText.fg = mode === "instant" ? C.ok : C.dim
 
     histText.content = state.log.length ? state.log.slice(0, 8).join("\n") : "—"
   }
@@ -675,10 +917,12 @@ function update() {
       : state.module === "volume"
         ? "↑ ↓ change the TV volume      ← → switch module      − + also work"
         : state.module === "text"
-          ? instant
-            ? "type: every character is sent to the TV      ⌫ = DEL      Tab moves on"
-            : "type your text      ⏎ sends it      ⌫ edits      ← → move the cursor"
-          : "↑ ↓ or ← → choose the send mode      ⏎ toggles"
+          ? state.sendMode === "mirror"
+            ? "type: the TV's field is edited as you pause      ↑ ↓ fields      ⏎ = OK      Esc empties it"
+            : instant
+              ? "type: every character is sent to the TV      ⌫ = DEL      Tab moves on"
+              : "type your text      ⏎ sends it      ⌫ edits      ← → move the cursor"
+          : "↑ ↓ or ← → choose the send mode      ⏎ toggles      i = fix the TV's keyboard      k = force the layout"
   footerStatus.content = `${detail}        last sent: ${state.lastSent}`
 }
 
@@ -754,7 +998,8 @@ function sendText(text, { mirror = false } = {}) {
     try {
       state.busy = true
       update()
-      const r = await inputText(state.serial, payload)
+      noteUntypeable(payload)
+      const r = await inputText(state.serial, payload, effectiveLayout())
       state.busy = false
       state.lastSent = `text ${JSON.stringify(payload)}`
       if (mirror) state.echo += payload
@@ -1073,6 +1318,7 @@ function launchSelected() {
 
 function openRemote(device) {
   state.serial = device.serial
+  if (!state.demo && device.serial !== "demo") enqueue(detectKeyboard)
   state.deviceLabel = device.model || device.device || device.serial
   // Persist it so it shows up in the history list next time.
   state.history = remember({
@@ -1082,7 +1328,8 @@ function openRemote(device) {
     mac: state.history.find((d) => d.serial === device.serial)?.mac,
   })
   state.module = "dpad"
-  state.sendMode = "block"
+  state.sendMode = "mirror" // the mode that needs no reaching for Enter
+  state.caret = 0
   state.echo = ""
   state.log = []
   state.volume = null
@@ -1263,6 +1510,63 @@ function handleDevicesKey(key, name, shift) {
   }
 }
 
+/**
+ * Mirror mode: the local box is a copy of the TV's field, so there is nothing to
+ * "send" — edits are pushed after a pause. Enter stays the TV's OK button, which
+ * is what makes a search or a form usable without leaving this module.
+ */
+function handleMirrorKey(key, name, ctrl) {
+  const before = textInput.value
+
+  if (name === "return") {
+    enqueueAfterSync({ code: KEY.OK, label: "OK" })
+    // OK usually leaves the field; re-read once it has landed
+    setTimeout(() => {
+      mirror.probedAt = 0
+      enqueue(probeField)
+    }, 2500)
+    key.stopPropagation()
+    return
+  }
+  if (name === "up" || name === "down") {
+    const up = name === "up"
+    enqueueAfterSync({ code: up ? KEY.UP : KEY.DOWN, label: up ? "DPAD_UP" : "DPAD_DOWN" })
+    key.stopPropagation()
+    return
+  }
+  if (name === "escape") {
+    // Esc empties the box (which empties the TV's field on the next sync); on an
+    // empty box it moves on, so the module can always be left.
+    if (before) {
+      textInput.value = ""
+      state.caret = 0
+      scheduleSync()
+    } else {
+      cycleModule(1)
+    }
+    update()
+    key.stopPropagation()
+    return
+  }
+  if (name === "left" || name === "right") {
+    const length = textInput.value.length
+    state.caret = name === "left" ? Math.max(0, state.caret - 1) : Math.min(length, state.caret + 1)
+    scheduleSync()
+    return // the widget moves its own caret; we mirror the position to the TV
+  }
+
+  // Typing and backspace: the widget owns the edit. Whether the box already holds
+  // the new character when this runs depends on when the widget flushes input, so
+  // the sync is scheduled unconditionally — it diffs whatever the box holds at
+  // fire time — and the deferred read only keeps our idea of the caret honest.
+  setTimeout(() => {
+    const after = textInput.value
+    if (after !== before) state.caret = caretAfterChange(before, after)
+  }, 0)
+  scheduleSync()
+  update()
+}
+
 function handleAppsKey(key, name, shift) {
   const letter = keyLetter(name)
 
@@ -1347,6 +1651,10 @@ function handleRemoteKey(key, name, ctrl, shift) {
 
   // ---- TEXT module
   if (mod === "text") {
+    if (state.sendMode === "mirror") {
+      handleMirrorKey(key, name, ctrl)
+      return
+    }
     if (!instant) {
       // Composing: the input owns the keyboard.
       //
@@ -1419,7 +1727,14 @@ function handleRemoteKey(key, name, ctrl, shift) {
   // ---- SEND MODE module
   if (mod === "sendmode") {
     if (["up", "down", "left", "right", "return", "space"].includes(name)) {
-      setSendMode(instant ? "block" : "instant")
+      const order = ["mirror", "block", "instant"]
+      setSendMode(order[(order.indexOf(state.sendMode) + 1) % order.length])
+      key.stopPropagation()
+    } else if (name === "k") {
+      cycleLayout()
+      key.stopPropagation()
+    } else if (name === "i") {
+      enqueue(switchTvKeyboard)
       key.stopPropagation()
     }
     return

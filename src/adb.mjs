@@ -12,6 +12,7 @@
 //   4. the single-file payload that ships in ./assets — macOS only, it is Mach-O
 //   5. whatever `adb` (or `adb.exe`) is on PATH
 import { execFile, spawn } from "node:child_process"
+import { translate } from "./keymap.mjs"
 import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs"
 import * as net from "node:net"
 import { networkInterfaces } from "node:os"
@@ -159,6 +160,7 @@ export const KEY = {
   ENTER: 66,
   MENU: 82,
   PLAY_PAUSE: 85,
+  MOVE_END: 123,
 }
 
 export const KEY_LABEL = {
@@ -173,6 +175,7 @@ export const KEY_LABEL = {
   [KEY.HOME]: "HOME",
   [KEY.DEL]: "DEL",
   [KEY.ENTER]: "ENTER",
+  [KEY.MOVE_END]: "MOVE_END",
 }
 
 /** `adb devices -l` → [{ serial, state, model, ... }] */
@@ -295,9 +298,12 @@ function deviceShellQuote(s) {
   return `'${s.replace(/'/g, `'\\''`)}'`
 }
 
-export async function inputText(serial, text) {
+export async function inputText(serial, text, layout) {
   if (!text) return { ok: true, out: "", err: "" }
-  return adb(["-s", serial, "shell", "input", "text", deviceShellQuote(encodeInputText(text))])
+  // `layout` is the TV's own keyboard layout: the string is translated to the key
+  // positions that layout needs before it goes out. See src/keymap.mjs.
+  const out = translate(text, layout)
+  return adb(["-s", serial, "shell", "input", "text", deviceShellQuote(encodeInputText(out))])
 }
 
 /** Every installed package id, or just the user-installed ones with `thirdParty`. */
