@@ -23,11 +23,15 @@ import time
 
 ESC = 0x1B
 
+# The repository this script lives in, so the default stays correct whatever the
+# checkout directory is called (or wherever it was cloned).
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--cmd", default="./run.sh --auto")
-    p.add_argument("--cwd", default=os.path.expanduser("~/Projects/tv-remote-tui"))
+    p.add_argument("--cwd", default=REPO)
     p.add_argument("--cols", type=int, default=190)
     p.add_argument("--rows", type=int, default=46)
     p.add_argument("--wait", type=float, default=0.0, help="wait this long before the next --send")

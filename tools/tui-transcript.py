@@ -8,7 +8,7 @@ log line the first time it appears on screen, reading the HISTORY panel's own bo
 joining the rows the panel wraps.
 
     tui-transcript.py plan.json
-    plan.json: {"cmd": "TV_REMOTE_CONFIG_DIR=$(mktemp -d) ./run.sh --auto",
+    plan.json: {"cmd": "ZAPETTE_CONFIG_DIR=$(mktemp -d) ./run.sh --auto",
                 "hold": 20, "keys": [[13.0, "n"], [18.0, "3"], [26.0, "\\x1b[A"]]}
 
 Keys are literal bytes (a launch key, letters, arrow escape sequences); `hold` keeps
@@ -32,6 +32,9 @@ SPEC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tui-capture.py"
 _spec = importlib.util.spec_from_file_location("tui_capture", SPEC)
 tc = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(tc)
+
+# Reuse tui-capture's repository root rather than naming a checkout path.
+REPO = tc.REPO
 
 COLS, ROWS = 190, 46
 # Box drawing, light and heavy: the panel's own border sits in front of every row.
@@ -102,7 +105,7 @@ def main():
 
     pid, fd = pty.fork()
     if pid == 0:
-        os.chdir(plan.get("cwd", "~/Projects/zapette"))
+        os.chdir(plan.get("cwd", REPO))
         os.environ["TERM"] = "xterm-256color"
         os.execv("/bin/bash", ["/bin/bash", "-lc", cmd])
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))

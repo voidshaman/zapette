@@ -10,7 +10,7 @@ import urllib.request
 ENV_PATH = os.path.expanduser("~/.hermes/.env")
 BASE_URL = "https://opencode.ai/zen/go/v1/chat/completions"
 MODEL = "deepseek-v4-flash-vision-exp"
-IMG = sys.argv[1] if len(sys.argv) > 1 else "/tmp/tv-ui-small.png"
+IMG = sys.argv[1] if len(sys.argv) > 1 else "/tmp/zapette-ui-small.png"
 PROMPT_FILE = sys.argv[2] if len(sys.argv) > 2 else None
 
 
@@ -75,7 +75,7 @@ def main():
             "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
             "Accept": "application/json",
             # OpenCode's relay routes on this opaque per-conversation id.
-            "x-opencode-session": os.environ.get("OPENCODE_SESSION") or "hermes-tv-remote-tui",
+            "x-opencode-session": os.environ.get("OPENCODE_SESSION") or "hermes-zapette",
         },
     )
     try:
